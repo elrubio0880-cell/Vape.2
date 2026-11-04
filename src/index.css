@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-graffiti {
+    font-family: 'Rubik Wet Paint', cursive;
+  }
+  .font-tag {
+    font-family: 'Permanent Marker', cursive;
+  }
+  .font-urban {
+    font-family: 'Urbanist', sans-serif;
+  }
+
+  .text-glow-purple {
+    text-shadow: 0 0 10px rgba(168, 85, 247, 0.7), 0 0 20px rgba(147, 51, 234, 0.5);
+  }
+  .text-glow-cyan {
+    text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(34, 211, 238, 0.5);
+  }
+  .text-glow-lime {
+    text-shadow: 0 0 10px rgba(132, 204, 22, 0.7), 0 0 20px rgba(163, 230, 53, 0.5);
+  }
+  .box-glow-purple {
+    box-shadow: 0 0 25px -5px rgba(147, 51, 234, 0.4), inset 0 0 15px rgba(168, 85, 247, 0.15);
+  }
+  .box-glow-cyan {
+    box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4), inset 0 0 15px rgba(34, 211, 238, 0.15);
+  }
+}
+
+/* Atmospheric Smoke billow keyframes */
+@keyframes smokeBillow {
+  0% {
+    transform: translateY(0) scale(0.9) rotate(0deg);
+    opacity: 0.18;
+  }
+  50% {
+    transform: translateY(-30px) scale(1.2) rotate(5deg);
+    opacity: 0.38;
+  }
+  100% {
+    transform: translateY(0) scale(0.9) rotate(0deg);
+    opacity: 0.18;
+  }
+}
+
+@keyframes smokeParticleFloat {
+  0% {
+    transform: translate(0, 0) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.85;
+  }
+  75% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(var(--tw-smoke-x, 40px), -220px) scale(2.8);
+    opacity: 0;
+  }
+}
+
+@keyframes neonFlicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.85));
+  }
+  20%, 24%, 55% {
+    opacity: 0.75;
+    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.5));
+  }
+}
+
+@keyframes vaporPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px -3px rgba(168, 85, 247, 0.45);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 35px 2px rgba(6, 182, 212, 0.6);
+  }
+}
+
+@keyframes liveGlowCycle {
+  0%, 100% {
+    border-color: rgba(168, 85, 247, 0.6);
+  }
+  50% {
+    border-color: rgba(34, 211, 238, 0.7);
+  }
+}
+
+.animate-smoke-ambient {
+  animation: smokeBillow 12s ease-in-out infinite;
+}
+
+.animate-smoke-slow {
+  animation: smokeBillow 18s ease-in-out infinite reverse;
+}
+
+
+.animate-neon-sign {
+  animation: neonFlicker 5s infinite;
+}
+
+.animate-vapor-pulse {
+  animation: vaporPulse 4s ease-in-out infinite;
+}
+
+.animate-border-glow {
+  animation: liveGlowCycle 4s ease-in-out infinite;
+}
+
+/* Custom Scrollbar for urban dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090610;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3b1d60;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed;
+}

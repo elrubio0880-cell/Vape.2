@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f071e" />
+      <stop offset="50%" stop-color="#08050e" />
+      <stop offset="100%" stop-color="#14092b" />
+    </linearGradient>
+    <linearGradient id="neonRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9333ea" />
+      <stop offset="50%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="dropGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="55%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#7e22ce" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#neonRing)" stroke-width="14" opacity="0.9" />
+  <path d="M256 108 C256 108 164 222 164 294 C164 345 205 386 256 386 C307 386 348 345 348 294 C348 222 256 108 256 108 Z" fill="url(#dropGrad)" />
+  <path d="M222 280 C215 310 232 338 258 344" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.65" />
+  <text x="256" y="438" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="900" font-size="38" letter-spacing="4">BLACK VAPE</text>
+</svg>

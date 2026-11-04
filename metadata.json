@@ -1,0 +1,10 @@
+{
+  "name": "Remix pro Remix Remix Remix Remix Remix Remix VapeExpress Delivery",
+  "description": "Plataforma de delivery en tiempo real de líquidos de vapeo para mayores de edad, con cotización de viajes estilo inDrive, optimización de rutas y panel de finanzas e inventario.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

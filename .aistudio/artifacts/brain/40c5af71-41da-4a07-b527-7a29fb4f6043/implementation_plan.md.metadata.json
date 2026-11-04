@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan de implementación para la reestructuración estilo PedidosYa y sistema de autenticación por roles (Comprador con Nombre/Teléfono, Admin con Correo/Clave y creación de credenciales de Repartidor, y separación de la interfaz en secciones con Tienda principal y Mapa en pestaña dedicada).",
+  "updatedAt":  "2026-10-28T21:31:18.747145558Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
