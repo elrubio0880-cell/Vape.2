@@ -225,12 +225,18 @@ export async function fetchProducts(): Promise<Product[]> {
           .map(mapDbProductToClient)
           .filter((p) => !deletedIds.has(p.id));
 
+        const serverIds = new Set(serverProducts.map((p) => p.id));
+        const missingVapes = localProducts.filter(
+          (lp) => lp.productType === 'vape' && !serverIds.has(lp.id) && !deletedIds.has(lp.id)
+        );
+        const enrichedServerProducts = [...serverProducts, ...missingVapes];
+
         if (isProductsCustomized()) {
           // Preserve locally added/edited products and stock while including any new server products
           const localMap = new Map(localProducts.map((p) => [p.id, p]));
           const merged: Product[] = [...localProducts.filter((p) => !deletedIds.has(p.id))];
 
-          for (const sp of serverProducts) {
+          for (const sp of enrichedServerProducts) {
             if (!localMap.has(sp.id)) {
               merged.push(sp);
             }
@@ -239,8 +245,8 @@ export async function fetchProducts(): Promise<Product[]> {
           return merged;
         }
 
-        saveProducts(serverProducts, false);
-        return serverProducts;
+        saveProducts(enrichedServerProducts, false);
+        return enrichedServerProducts;
       }
     } catch (err) {
       console.warn('Error al cargar productos de Supabase, usando local cache:', err);
