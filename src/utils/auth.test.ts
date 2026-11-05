@@ -8,10 +8,11 @@ import {
   createDriverByAdmin,
 } from './auth';
 
-test('Initial users contain admin, delivery and buyer accounts', () => {
-  assert.ok(INITIAL_USERS.some((u) => u.role === 'admin' && u.email));
-  assert.ok(INITIAL_USERS.some((u) => u.role === 'delivery' && u.username));
-  assert.ok(INITIAL_USERS.some((u) => u.role === 'comprador' && u.phone));
+test('Initial users contain production admin accounts only (no demo users)', () => {
+  assert.ok(INITIAL_USERS.some((u) => u.role === 'admin' && u.email === 'elrubio0880.0@gmail.com'));
+  assert.ok(INITIAL_USERS.some((u) => u.role === 'admin' && u.email === 'noadiasclaribel.y2k@icloud.com'));
+  assert.equal(INITIAL_USERS.some((u) => u.role === 'delivery'), false);
+  assert.equal(INITIAL_USERS.some((u) => u.role === 'comprador'), false);
 });
 
 test('loginOrRegisterBuyer requires only name and phone', async () => {
@@ -25,7 +26,7 @@ test('loginAdmin validates email and password', async () => {
   const badLogin = await loginAdmin('wrong@email.com', 'admin');
   assert.equal(badLogin.success, false);
 
-  const goodLogin = await loginAdmin('admin@vapeexpress.com', 'admin');
+  const goodLogin = await loginAdmin('elrubio0880.0@gmail.com', 'BlackVape2026*');
   assert.equal(goodLogin.success, true);
   assert.equal(goodLogin.user?.role, 'admin');
 });

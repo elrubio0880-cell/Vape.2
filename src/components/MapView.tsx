@@ -303,9 +303,12 @@ export const MapView: React.FC<MapViewProps> = ({
       center: initialCenter,
       zoom: 15,
       zoomControl: false,
+      attributionControl: false,
     });
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+    }
 
     const zonesLayer = L.layerGroup().addTo(map);
     const routeLayer = L.layerGroup().addTo(map);
@@ -419,32 +422,35 @@ export const MapView: React.FC<MapViewProps> = ({
 
         zonesLayer.addLayer(circle);
 
-        // Cardinal perimeter tag at Bearing ~45 deg North-East along the circumference
-        const offsetDegLat = (zone.radiusMeters / 111320) * 0.7071;
-        const offsetDegLng =
-          (zone.radiusMeters / (111320 * Math.cos((store.location.lat * Math.PI) / 180))) *
-          0.7071;
-        const tagCoord: [number, number] = [
-          store.location.lat + offsetDegLat,
-          store.location.lng + offsetDegLng,
-        ];
+        // Only render perimeter tag on mobile for the active zone (or all zones on desktop) to avoid map clutter
+        const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+        if (isCurrentTargetZone || isDesktop) {
+          const offsetDegLat = (zone.radiusMeters / 111320) * 0.7071;
+          const offsetDegLng =
+            (zone.radiusMeters / (111320 * Math.cos((store.location.lat * Math.PI) / 180))) *
+            0.7071;
+          const tagCoord: [number, number] = [
+            store.location.lat + offsetDegLat,
+            store.location.lng + offsetDegLng,
+          ];
 
-        const tagIcon = L.divIcon({
-          className: 'custom-zone-tag',
-          html: `
-            <div class="px-2 py-0.5 rounded-lg text-[9px] font-black font-urban shadow-xl border whitespace-nowrap pointer-events-none transition-all ${
-              isCurrentTargetZone
-                ? 'scale-110 bg-neutral-950 text-white ring-2 ring-emerald-400 font-black'
-                : 'bg-neutral-950/90'
-            }" style="color:${zone.color}; border-color:${zone.color}99;">
-              ${zone.label}
-            </div>
-          `,
-          iconSize: [64, 20],
-          iconAnchor: [32, 10],
-        });
+          const tagIcon = L.divIcon({
+            className: 'custom-zone-tag',
+            html: `
+              <div class="px-2 py-0.5 rounded-lg text-[9px] font-black font-urban shadow-xl border whitespace-nowrap pointer-events-none transition-all ${
+                isCurrentTargetZone
+                  ? 'scale-105 bg-neutral-950 text-white ring-1 ring-emerald-400 font-black'
+                  : 'bg-neutral-950/90'
+              }" style="color:${zone.color}; border-color:${zone.color}99;">
+                Zona ${zone.tier} • $${zone.fee}
+              </div>
+            `,
+            iconSize: [72, 20],
+            iconAnchor: [36, 10],
+          });
 
-        zonesLayer.addLayer(L.marker(tagCoord, { icon: tagIcon, interactive: false }));
+          zonesLayer.addLayer(L.marker(tagCoord, { icon: tagIcon, interactive: false }));
+        }
       });
     }
 
@@ -881,166 +887,33 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* Leaflet Map Canvas */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* TOP LEFT: Map Mode Switcher & Delivery Zones Legend */}
-      <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 max-w-[calc(100%-120px)]">
-        {/* Mode Switcher */}
-        <div className="relative">
+      {/* TOP LEFT: Unified Non-Overlapping Flex Stack (Buttons + Dropdowns + Alerts) */}
+      <div className="absolute top-2.5 left-2.5 right-14 z-20 flex flex-col items-start gap-1.5 pointer-events-none">
+        {/* Button Row */}
+        <div className="flex flex-wrap items-center gap-1.5 pointer-events-auto">
+          {/* 1. Map Style Button */}
           <button
             type="button"
             onClick={() => {
               setIsModeMenuOpen(!isModeMenuOpen);
               setIsZonesLegendOpen(false);
+              setIsSectorsMenuOpen(false);
             }}
-            className="flex items-center gap-2 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-2xl shadow-xl border border-neutral-700/80 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-xs font-black"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-950/95 hover:bg-neutral-900 text-white rounded-xl shadow-lg border border-neutral-700/90 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-[11px] font-black shrink-0"
             aria-label="Cambiar estilo de mapa"
           >
-            <span className="text-base">{activeModeConfig.icon}</span>
-            <span className="hidden sm:inline">{activeModeConfig.name}</span>
-            <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] uppercase font-bold border border-emerald-500/30">
+            <span className="text-sm leading-none">{activeModeConfig.icon}</span>
+            <span className="text-emerald-400 text-[10px] uppercase font-bold tracking-tight">
               {activeModeConfig.badge}
             </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${
+              className={`w-3 h-3 text-neutral-400 transition-transform ${
                 isModeMenuOpen ? 'rotate-180' : ''
               }`}
             />
           </button>
 
-          {/* Mode Dropdown Menu */}
-          {isModeMenuOpen && (
-            <div className="absolute top-full left-0 mt-2 w-72 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-2xl p-2 shadow-2xl z-30 animate-in fade-in slide-in-from-top-2 space-y-1">
-              <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 flex items-center justify-between">
-                <span>Modos de Mapa Disponibles</span>
-                <span className="text-cyan-400">En Vivo</span>
-              </div>
-
-              {(Object.keys(MAP_MODES) as MapMode[]).map((modeKey) => {
-                const mode = MAP_MODES[modeKey];
-                const isCurrent = currentMapMode === modeKey;
-
-                return (
-                  <button
-                    key={modeKey}
-                    type="button"
-                    onClick={() => handleSelectMode(modeKey)}
-                    className={`w-full flex items-start gap-2.5 p-2 rounded-xl text-left transition-all cursor-pointer ${
-                      isCurrent
-                        ? 'bg-neutral-800 border border-emerald-500/50 shadow'
-                        : 'hover:bg-neutral-800/60 border border-transparent'
-                    }`}
-                  >
-                    <span className="text-xl shrink-0 mt-0.5">{mode.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                          {mode.name}
-                          {isCurrent && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                        </span>
-                        <span className="text-[9px] font-bold text-neutral-400 uppercase bg-neutral-950 px-1.5 py-0.5 rounded border border-neutral-800">
-                          {mode.badge}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-neutral-400 mt-0.5 line-clamp-1">
-                        {mode.description}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Delivery Zones Legend Button */}
-        {showDeliveryZones && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setIsZonesLegendOpen(!isZonesLegendOpen);
-                setIsModeMenuOpen(false);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-2xl shadow-xl border border-cyan-500/50 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-xs font-black"
-              aria-label="Ver rangos y tarifas de delivery"
-            >
-              <Radar className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span className="hidden sm:inline text-neutral-200">Tarifa:</span>
-              <span className="text-cyan-300 font-bold">$25 c/1.5km</span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${
-                  isZonesLegendOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {/* Zones Legend Dropdown */}
-            {isZonesLegendOpen && (
-              <div className="absolute top-full left-0 mt-2 w-80 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-2xl p-3 shadow-2xl z-30 animate-in fade-in slide-in-from-top-2 space-y-2">
-                <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Radar className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-black text-white font-urban">Rangos de Tarifa a la Redonda</span>
-                  </div>
-                  <span className="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800">
-                    Regla 1.5 km
-                  </span>
-                </div>
-
-                <p className="text-[10px] text-neutral-300 leading-tight">
-                  Cada <strong>1.5 km</strong> de distancia al local tiene un coste de <strong>$25 DOP</strong>. Los círculos en el mapa muestran el radio exacto de cada rango:
-                </p>
-
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-                  {DELIVERY_ZONES.map((z) => {
-                    const isSelectedZone = selectedDeliveryCalc?.tier === z.tier;
-                    return (
-                      <div
-                        key={z.tier}
-                        className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-colors ${
-                          isSelectedZone
-                            ? 'bg-neutral-800 border-emerald-400/80 shadow-md ring-1 ring-emerald-400/50'
-                            : 'bg-neutral-950/70 border-neutral-800/80'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className="w-3 h-3 rounded-full shrink-0 shadow-sm"
-                            style={{ backgroundColor: z.color }}
-                          />
-                          <div className="min-w-0">
-                            <span className="font-bold text-white block text-[11px] truncate">
-                              {z.label}
-                            </span>
-                            <span className="text-[9px] text-neutral-400 block">
-                              Radio: 0 a {z.maxKm} km del local
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-black text-sm" style={{ color: z.color }}>
-                            ${z.fee} DOP
-                          </span>
-                          {isSelectedZone && (
-                            <span className="text-[8px] uppercase font-bold text-emerald-400 block">
-                              ● Tu zona
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="p-2 rounded-xl bg-purple-950/40 border border-purple-800/40 text-[10px] text-purple-200">
-                  ⚡ <strong>Cálculo automático:</strong> Cada 1.5 km suma $25 DOP de forma exacta e inmediata.
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Sectores de Loma de Cabrera Selector Button */}
-        <div className="relative">
+          {/* 2. Sectores de Loma Button */}
           <button
             type="button"
             onClick={() => {
@@ -1048,271 +921,267 @@ export const MapView: React.FC<MapViewProps> = ({
               setIsModeMenuOpen(false);
               setIsZonesLegendOpen(false);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-2xl shadow-xl border border-emerald-500/50 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-xs font-black"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-neutral-950/95 hover:bg-neutral-900 text-white rounded-xl shadow-lg border border-emerald-500/60 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-[11px] font-black shrink-0"
             aria-label="Sectores de Loma de Cabrera"
           >
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Sectores:</span>
-            <span className="text-emerald-300 font-bold">Loma de Cabrera</span>
+            <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span className="text-emerald-300 text-[10px] font-bold">
+              Sectores
+            </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${
+              className={`w-3 h-3 text-neutral-400 transition-transform shrink-0 ${
                 isSectorsMenuOpen ? 'rotate-180' : ''
               }`}
             />
           </button>
 
-          {/* Sectores Dropdown Menu */}
-          {isSectorsMenuOpen && (
-            <div className="absolute top-full left-0 mt-2 w-72 bg-neutral-900/95 backdrop-blur-xl border border-emerald-500/40 rounded-2xl p-2.5 shadow-2xl z-30 animate-in fade-in slide-in-from-top-2 space-y-1.5 max-h-72 overflow-y-auto">
-              <div className="px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 flex items-center justify-between">
-                <span>Puntos Clave Loma de Cabrera</span>
-                <span className="text-emerald-400">1-Tap</span>
-              </div>
-
-              {LOMA_CABRERA_SECTORS.map((sec) => (
-                <button
-                  key={sec.id}
-                  type="button"
-                  onClick={() => {
-                    setIsSectorsMenuOpen(false);
-                    if (onSelectLocationRef.current) {
-                      onSelectLocationRef.current({ lat: sec.lat, lng: sec.lng });
-                    }
-                    mapInstanceRef.current?.flyTo([sec.lat, sec.lng], 17, { duration: 0.9 });
-                  }}
-                  className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-neutral-800/80 transition-colors border border-transparent hover:border-emerald-500/30 cursor-pointer"
-                >
-                  <div className="min-w-0 pr-2">
-                    <span className="text-xs font-bold text-white block truncate">
-                      {sec.name}
-                    </span>
-                    <span className="text-[9px] text-neutral-400">
-                      {calculateDistanceKm(store.location, { lat: sec.lat, lng: sec.lng }).toFixed(1)} km del local
-                    </span>
-                  </div>
-                  {sec.badge && (
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 shrink-0">
-                      {sec.badge}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* LIVE TELEMETRY & AUTO-FOLLOW HUD (Below top buttons) */}
-      <div className="absolute top-14 left-3 z-10 flex flex-wrap items-center gap-2 max-w-[calc(100%-120px)] pointer-events-auto">
-        {/* GPS Live Telemetry Chip */}
-        <div className="bg-neutral-950/95 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-blue-500/50 shadow-xl flex items-center gap-2 text-xs text-white">
-          <span className={`w-2 h-2 rounded-full ${isLiveGpsActive ? 'bg-emerald-400 animate-pulse' : 'bg-blue-400 animate-ping'} shrink-0`} />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-black text-blue-200">
-              GPS en Vivo:
-            </span>
-            <span className="text-[10px] text-neutral-300 font-mono">
-              ±{userDeviceAccuracy ?? 12}m
-            </span>
-            {userDeviceCoords && (
-              <span className="hidden md:inline text-[9px] text-neutral-400 font-mono">
-                ({userDeviceCoords.lat.toFixed(4)}, {userDeviceCoords.lng.toFixed(4)})
-              </span>
-            )}
-            {userDeviceSpeed !== undefined && userDeviceSpeed > 0 && (
-              <span className="text-[10px] text-cyan-300 font-bold ml-1">
-                • {userDeviceSpeed} km/h
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Auto-Follow Toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !isAutoFollow;
-            setIsAutoFollow(next);
-            if (next && userDeviceCoords) {
-              mapInstanceRef.current?.flyTo([userDeviceCoords.lat, userDeviceCoords.lng], 17, { duration: 0.8 });
-            }
-          }}
-          className={`px-3 py-1.5 rounded-2xl text-[11px] font-black border transition-all flex items-center gap-1.5 shadow-lg cursor-pointer ${
-            isAutoFollow
-              ? 'bg-emerald-500 text-neutral-950 border-emerald-300 ring-2 ring-emerald-400/50'
-              : 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 border-neutral-700/80'
-          }`}
-          title={isAutoFollow ? 'Desactivar auto-seguimiento' : 'Auto-seguir mi posición en tiempo real'}
-        >
-          <Target className={`w-3.5 h-3.5 ${isAutoFollow ? 'text-neutral-950 animate-spin' : 'text-neutral-400'}`} />
-          <span>{isAutoFollow ? 'Siguiendo en Vivo' : 'Auto-Seguir GPS'}</span>
-        </button>
-
-        {/* Instant Fix GPS button if selected location is over store */}
-        {selectedLocation &&
-          calculateDistanceKm(store.location, selectedLocation) < 0.05 &&
-          userDeviceCoords &&
-          calculateDistanceKm(store.location, userDeviceCoords) >= 0.05 &&
-          onSelectLocation && (
+          {/* 3. Delivery Zones Legend Button (Desktop only) */}
+          {showDeliveryZones && (
             <button
               type="button"
               onClick={() => {
-                onSelectLocation(userDeviceCoords);
-                mapInstanceRef.current?.flyTo([userDeviceCoords.lat, userDeviceCoords.lng], 17, { duration: 0.8 });
+                setIsZonesLegendOpen(!isZonesLegendOpen);
+                setIsModeMenuOpen(false);
+                setIsSectorsMenuOpen(false);
               }}
-              className="px-3 py-1.5 rounded-2xl text-[11px] font-black bg-amber-500 hover:bg-amber-400 text-neutral-950 border border-amber-300 shadow-xl flex items-center gap-1.5 animate-bounce cursor-pointer"
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-950/95 hover:bg-neutral-900 text-white rounded-xl shadow-lg border border-cyan-500/50 backdrop-blur-md transition-all active:scale-95 cursor-pointer text-[11px] font-black shrink-0"
+              aria-label="Ver rangos y tarifas de delivery"
             >
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Fijar mi GPS Real</span>
+              <Radar className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-cyan-300 text-[10px] font-bold">$25 c/1.5km</span>
+              <ChevronDown
+                className={`w-3 h-3 text-neutral-400 transition-transform ${
+                  isZonesLegendOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
           )}
 
-        {/* Live Delivery Zone Badge (if computed) */}
-        {selectedDeliveryCalc && (
-          <div className="bg-neutral-950/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-cyan-500/40 shadow-xl flex items-center gap-2 text-xs text-white">
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse"
-              style={{ backgroundColor: selectedDeliveryCalc.zone.color }}
-            />
-            <span className="font-black text-white text-[11px] truncate">
-              {selectedDeliveryCalc.zone.shortLabel} ({selectedDeliveryCalc.distanceKm.toFixed(1)} km)
-            </span>
-            <span className="text-[10px] text-cyan-300 font-bold">
-              • ${selectedDeliveryCalc.fee} DOP
-            </span>
+          {/* 4. Instant Fix GPS button if selected location is accidentally over store */}
+          {selectedLocation &&
+            calculateDistanceKm(store.location, selectedLocation) < 0.05 &&
+            userDeviceCoords &&
+            calculateDistanceKm(store.location, userDeviceCoords) >= 0.05 &&
+            onSelectLocation && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectLocation(userDeviceCoords);
+                  mapInstanceRef.current?.flyTo([userDeviceCoords.lat, userDeviceCoords.lng], 17, { duration: 0.8 });
+                }}
+                className="px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-amber-500 hover:bg-amber-400 text-neutral-950 border border-amber-300 shadow-lg flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <Navigation className="w-3 h-3" />
+                <span>Mi GPS</span>
+              </button>
+            )}
+        </div>
+
+        {/* Mode Dropdown Menu (Flows cleanly below buttons) */}
+        {isModeMenuOpen && (
+          <div className="w-64 sm:w-72 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-2xl p-2 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-top-2 space-y-1">
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 flex items-center justify-between">
+              <span>Modos de Mapa</span>
+              <span className="text-cyan-400">En Vivo</span>
+            </div>
+
+            {(Object.keys(MAP_MODES) as MapMode[]).map((modeKey) => {
+              const mode = MAP_MODES[modeKey];
+              const isCurrent = currentMapMode === modeKey;
+
+              return (
+                <button
+                  key={modeKey}
+                  type="button"
+                  onClick={() => handleSelectMode(modeKey)}
+                  className={`w-full flex items-start gap-2 p-2 rounded-xl text-left transition-all cursor-pointer ${
+                    isCurrent
+                      ? 'bg-neutral-800 border border-emerald-500/50 shadow'
+                      : 'hover:bg-neutral-800/60 border border-transparent'
+                  }`}
+                >
+                  <span className="text-lg shrink-0 mt-0.5">{mode.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        {mode.name}
+                        {isCurrent && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                      </span>
+                      <span className="text-[9px] font-bold text-neutral-400 uppercase bg-neutral-950 px-1.5 py-0.5 rounded border border-neutral-800">
+                        {mode.badge}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-400 mt-0.5 line-clamp-1">
+                      {mode.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Sectores Dropdown Menu (Flows cleanly below buttons) */}
+        {isSectorsMenuOpen && (
+          <div className="w-64 sm:w-72 bg-neutral-900/95 backdrop-blur-xl border border-emerald-500/40 rounded-2xl p-2 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-top-2 space-y-1 max-h-60 overflow-y-auto">
+            <div className="px-1.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 flex items-center justify-between">
+              <span>Sectores Loma de Cabrera</span>
+              <span className="text-emerald-400">1-Toque</span>
+            </div>
+
+            {LOMA_CABRERA_SECTORS.map((sec) => (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => {
+                  setIsSectorsMenuOpen(false);
+                  if (onSelectLocationRef.current) {
+                    onSelectLocationRef.current({ lat: sec.lat, lng: sec.lng });
+                  }
+                  mapInstanceRef.current?.flyTo([sec.lat, sec.lng], 17, { duration: 0.9 });
+                }}
+                className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-neutral-800/80 transition-colors border border-transparent hover:border-emerald-500/30 cursor-pointer"
+              >
+                <div className="min-w-0 pr-2">
+                  <span className="text-xs font-bold text-white block truncate">
+                    {sec.name}
+                  </span>
+                  <span className="text-[9px] text-neutral-400">
+                    {calculateDistanceKm(store.location, { lat: sec.lat, lng: sec.lng }).toFixed(1)} km del local
+                  </span>
+                </div>
+                {sec.badge && (
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 shrink-0">
+                    {sec.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Zones Legend Dropdown (Desktop) */}
+        {isZonesLegendOpen && showDeliveryZones && (
+          <div className="w-72 sm:w-80 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-2xl p-3 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-top-2 space-y-2">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+              <div className="flex items-center gap-1.5">
+                <Radar className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-black text-white font-urban">Rangos de Tarifa</span>
+              </div>
+              <span className="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800">
+                Regla 1.5 km
+              </span>
+            </div>
+
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+              {DELIVERY_ZONES.map((z) => {
+                const isSelectedZone = selectedDeliveryCalc?.tier === z.tier;
+                return (
+                  <div
+                    key={z.tier}
+                    className={`flex items-center justify-between p-2 rounded-xl border text-xs ${
+                      isSelectedZone
+                        ? 'bg-neutral-800 border-emerald-400/80'
+                        : 'bg-neutral-950/70 border-neutral-800/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: z.color }}
+                      />
+                      <div className="min-w-0">
+                        <span className="font-bold text-white block text-[11px] truncate">
+                          {z.label}
+                        </span>
+                        <span className="text-[9px] text-neutral-400 block">
+                          Hasta {z.maxKm} km del local
+                        </span>
+                      </div>
+                    </div>
+                    <span className="font-black text-xs shrink-0" style={{ color: z.color }}>
+                      ${z.fee} DOP
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* GPS Feedback Toast (Flows cleanly below buttons without overlapping) */}
+        {gpsFeedback && (
+          <div className="bg-neutral-950/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-blue-500/60 text-xs text-white shadow-2xl flex items-center gap-2 pointer-events-auto animate-in fade-in max-w-[260px]">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
+            <span className="font-urban text-[11px] font-bold text-neutral-100">{gpsFeedback}</span>
+          </div>
+        )}
+
+        {/* Remote Location Warning Banner (Flows cleanly below buttons without overlapping) */}
+        {selectedLocationIssue?.isSuspicious && selectedLocationIssue?.reason === 'out_of_zone' && (
+          <div className="w-full sm:max-w-md bg-amber-950/95 border border-amber-500/90 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md text-white text-xs pointer-events-auto animate-in fade-in">
+            <div className="flex items-start gap-2">
+              <span className="text-base shrink-0">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <strong className="font-bold text-amber-300 block text-[11px]">
+                    Ubicación fuera de Loma ({selectedLocationIssue.detectedRegionName})
+                  </strong>
+                  <button
+                    type="button"
+                    onClick={() => clearStoredUserLocation()}
+                    className="text-[10px] text-amber-400/80 hover:text-white underline cursor-pointer ml-2"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const parque = LOMA_CABRERA_SECTORS.find((s) => s.id === 'parque_central_loma') || LOMA_CABRERA_SECTORS[1];
+                      if (onSelectLocationRef.current) onSelectLocationRef.current({ lat: parque.lat, lng: parque.lng });
+                      mapInstanceRef.current?.flyTo([parque.lat, parque.lng], 17, { duration: 0.8 });
+                    }}
+                    className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black rounded-lg text-[10px] shadow cursor-pointer"
+                  >
+                    📍 Parque Central
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const corozo = LOMA_CABRERA_SECTORS.find((s) => s.id === 'el_corozo_loma') || LOMA_CABRERA_SECTORS[2];
+                      if (onSelectLocationRef.current) onSelectLocationRef.current({ lat: corozo.lat, lng: corozo.lng });
+                      mapInstanceRef.current?.flyTo([corozo.lat, corozo.lng], 17, { duration: 0.8 });
+                    }}
+                    className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black rounded-lg text-[10px] shadow cursor-pointer"
+                  >
+                    📍 El Corozo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsSectorsMenuOpen(true)}
+                    className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 text-amber-200 border border-amber-500/50 rounded-lg text-[10px] font-bold cursor-pointer"
+                  >
+                    📋 Ver Sectores
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* REMOTE LOCATION / ISP ANTENNA MISPLACEMENT WARNING BANNER */}
-      {selectedLocationIssue?.isSuspicious && selectedLocationIssue?.reason === 'out_of_zone' && (
-        <div className="absolute top-26 left-3 right-3 sm:right-auto sm:max-w-md z-20 bg-amber-950/95 border-2 border-amber-500/90 rounded-2xl p-3 shadow-2xl backdrop-blur-md text-white text-xs animate-in fade-in">
-          <div className="flex items-start gap-2.5">
-            <span className="text-xl shrink-0">⚠️</span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <strong className="font-bold text-amber-300 block text-xs">
-                  Ubicación reportada fuera de Loma ({selectedLocationIssue.detectedRegionName})
-                </strong>
-                <button
-                  type="button"
-                  onClick={() => clearStoredUserLocation()}
-                  title="Limpiar ubicación guardada"
-                  className="text-[10px] text-amber-400/80 hover:text-white underline cursor-pointer"
-                >
-                  Limpiar
-                </button>
-              </div>
-              <p className="text-[11px] text-amber-100/90 mt-0.5 leading-snug">
-                Tu navegador detectó una antena IP a {selectedLocationIssue.distanceKm} km. Para corregirlo, toca tu sector en Loma de Cabrera:
-              </p>
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parque = LOMA_CABRERA_SECTORS.find((s) => s.id === 'parque_central_loma') || LOMA_CABRERA_SECTORS[1];
-                    if (onSelectLocationRef.current) onSelectLocationRef.current({ lat: parque.lat, lng: parque.lng });
-                    mapInstanceRef.current?.flyTo([parque.lat, parque.lng], 17, { duration: 0.8 });
-                  }}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black rounded-lg text-[10px] shadow active:scale-95 cursor-pointer"
-                >
-                  📍 Parque Central
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const corozo = LOMA_CABRERA_SECTORS.find((s) => s.id === 'el_corozo_loma') || LOMA_CABRERA_SECTORS[2];
-                    if (onSelectLocationRef.current) onSelectLocationRef.current({ lat: corozo.lat, lng: corozo.lng });
-                    mapInstanceRef.current?.flyTo([corozo.lat, corozo.lng], 17, { duration: 0.8 });
-                  }}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black rounded-lg text-[10px] shadow active:scale-95 cursor-pointer"
-                >
-                  📍 El Corozo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const barrio = LOMA_CABRERA_SECTORS.find((s) => s.id === 'barrio_norte_loma') || LOMA_CABRERA_SECTORS[3];
-                    if (onSelectLocationRef.current) onSelectLocationRef.current({ lat: barrio.lat, lng: barrio.lng });
-                    mapInstanceRef.current?.flyTo([barrio.lat, barrio.lng], 17, { duration: 0.8 });
-                  }}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black rounded-lg text-[10px] shadow active:scale-95 cursor-pointer"
-                >
-                  📍 Barrio Norte
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSectorsMenuOpen(true)}
-                  className="px-2.5 py-1 bg-neutral-900 hover:bg-neutral-800 text-amber-200 border border-amber-500/50 rounded-lg text-[10px] font-bold cursor-pointer"
-                >
-                  📋 Más Sectores
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TOP RIGHT: Floating Map Controls (Fit, Store, GPS, Expand) */}
+      {/* TOP RIGHT: Streamlined Floating Map Controls */}
       {showAllControls && (
-        <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
-          {/* Expand/Collapse Map */}
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Contraer mapa' : 'Ampliar mapa'}
-            className="p-2.5 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer"
-            aria-label="Expandir o contraer mapa"
-          >
-            {isExpanded ? (
-              <Minimize2 className="w-4 h-4 text-amber-400" />
-            ) : (
-              <Maximize2 className="w-4 h-4 text-neutral-300" />
-            )}
-          </button>
-
-          {/* Fit all points */}
-          <button
-            type="button"
-            onClick={fitAll}
-            title="Ajustar y ver toda la ruta"
-            className="p-2.5 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer"
-            aria-label="Ver mapa completo"
-          >
-            <Layers className="w-4 h-4 text-cyan-400" />
-          </button>
-
-          {/* Center Store */}
-          <button
-            type="button"
-            onClick={centerStore}
-            title="Centrar en Tienda Física"
-            className="p-2.5 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer"
-            aria-label="Ubicar Tienda Física"
-          >
-            <Store className="w-4 h-4 text-violet-400" />
-          </button>
-
-          {/* Center Target if exists */}
-          {selectedLocation && (
-            <button
-              type="button"
-              onClick={centerSelected}
-              title="Centrar en Destino"
-              className="p-2.5 bg-neutral-900/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer"
-              aria-label="Centrar en Destino"
-            >
-              <Crosshair className="w-4 h-4 text-emerald-400" />
-            </button>
-          )}
-
-          {/* Geolocation Button (Always available to locate user) */}
+        <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1.5">
+          {/* Geolocation Button (Primary Action) */}
           <button
             type="button"
             onClick={handleGeolocate}
             disabled={isLocatingInMap}
             title="Detectar mi ubicación GPS"
-            className="p-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl shadow-lg shadow-blue-600/30 border border-blue-400/50 backdrop-blur transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+            className="w-9 h-9 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl shadow-lg shadow-blue-600/30 border border-blue-400/50 backdrop-blur transition-all active:scale-95 cursor-pointer flex items-center justify-center"
             aria-label="Detectar mi ubicación GPS"
           >
             {isLocatingInMap ? (
@@ -1322,63 +1191,102 @@ export const MapView: React.FC<MapViewProps> = ({
             )}
           </button>
 
-          {/* Auto-Follow Camera Button */}
+          {/* Fit all points (Route + Store + Pin) */}
           <button
             type="button"
-            onClick={() => {
-              const next = !isAutoFollow;
-              setIsAutoFollow(next);
-              if (next && userDeviceCoords) {
-                mapInstanceRef.current?.flyTo([userDeviceCoords.lat, userDeviceCoords.lng], 17, { duration: 0.8 });
-              }
-            }}
-            title={isAutoFollow ? 'Desactivar auto-seguimiento' : 'Auto-seguir mi ubicación GPS en tiempo real'}
-            className={`p-2.5 rounded-xl shadow-lg border backdrop-blur transition-all active:scale-95 cursor-pointer flex items-center justify-center ${
-              isAutoFollow
-                ? 'bg-emerald-500 text-neutral-950 border-emerald-300 ring-2 ring-emerald-400'
-                : 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 border-neutral-700/80'
-            }`}
-            aria-label="Auto-seguir mi ubicación"
+            onClick={fitAll}
+            title="Encuadrar ruta completa"
+            className="w-9 h-9 bg-neutral-950/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+            aria-label="Ver ruta completa"
           >
-            <Target className={`w-4 h-4 ${isAutoFollow ? 'animate-spin' : ''}`} />
+            <Layers className="w-4 h-4 text-cyan-400" />
           </button>
+
+          {/* Expand/Collapse Map */}
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            title={isExpanded ? 'Contraer mapa' : 'Ampliar mapa'}
+            className="w-9 h-9 bg-neutral-950/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+            aria-label="Expandir o contraer mapa"
+          >
+            {isExpanded ? (
+              <Minimize2 className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Maximize2 className="w-4 h-4 text-neutral-300" />
+            )}
+          </button>
+
+          {/* Center Store (Visible on sm+ to avoid vertical overflow on mobile) */}
+          <button
+            type="button"
+            onClick={centerStore}
+            title="Centrar en Tienda Física"
+            className="hidden sm:flex w-9 h-9 bg-neutral-950/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer items-center justify-center"
+            aria-label="Ubicar Tienda Física"
+          >
+            <Store className="w-4 h-4 text-violet-400" />
+          </button>
+
+          {/* Center Target if exists (Visible on sm+) */}
+          {selectedLocation && (
+            <button
+              type="button"
+              onClick={centerSelected}
+              title="Centrar en Destino"
+              className="hidden sm:flex w-9 h-9 bg-neutral-950/90 hover:bg-neutral-800 text-white rounded-xl shadow-lg border border-neutral-700/80 backdrop-blur transition-all active:scale-95 cursor-pointer items-center justify-center"
+              aria-label="Centrar en Destino"
+            >
+              <Crosshair className="w-4 h-4 text-emerald-400" />
+            </button>
+          )}
         </div>
       )}
 
-      {/* GPS Feedback Toast on Map */}
-      {gpsFeedback && (
-        <div className="absolute top-24 right-3 z-20 bg-neutral-950/95 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-blue-500/60 text-xs text-white shadow-2xl flex items-center gap-2 animate-in fade-in max-w-[280px]">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
-          <span className="font-urban text-[11px] font-bold text-neutral-100">{gpsFeedback}</span>
-        </div>
-      )}
-
-      {/* BOTTOM INFO BAR: Street Route Details Badge (Real street tracing) */}
-      {streetRouteInfo && streetRouteInfo.coordinates.length > 1 && (
-        <div className="absolute bottom-3 right-3 z-10 bg-neutral-900/95 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-neutral-700/80 text-xs text-white shadow-2xl flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <Route className="w-4 h-4 text-emerald-400 shrink-0" />
-          <div>
-            <div className="flex items-center gap-1.5 font-black text-xs text-white">
-              <span>Ruta por Calles:</span>
-              <span className="text-emerald-400">{streetRouteInfo.distanceKm} km</span>
-              <span className="text-neutral-500">•</span>
-              <span className="text-cyan-400">~{streetRouteInfo.durationMinutes} min</span>
-            </div>
-            <span className="text-[10px] text-neutral-400 block">
-              {streetRouteInfo.isRealStreet
-                ? '🛣️ Siguiendo trazado vial y esquinas reales'
-                : '🛣️ Trazado vehicular calibrado'}
-            </span>
+      {/* SINGLE UNIFIED BOTTOM BAR (Never overlaps on mobile) */}
+      {(onSelectLocation || (streetRouteInfo && streetRouteInfo.coordinates.length > 1) || selectedDeliveryCalc) && (
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:right-14 z-10 bg-neutral-950/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-neutral-800/90 text-[11px] text-neutral-200 shadow-xl flex items-center justify-between gap-2 pointer-events-none">
+          {/* Left: Route info OR Pin drag hint */}
+          <div className="flex items-center gap-1.5 min-w-0 truncate">
+            {streetRouteInfo && streetRouteInfo.coordinates.length > 1 ? (
+              <>
+                <Route className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="font-black text-white truncate">
+                  Ruta: <span className="text-emerald-400">{streetRouteInfo.distanceKm} km</span>
+                  <span className="text-neutral-500 mx-1">•</span>
+                  <span className="text-cyan-300">~{streetRouteInfo.durationMinutes} min</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate text-neutral-300">
+                  Toca el mapa o mueve el pin a tu casa
+                </span>
+              </>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* Drag Hint Pill */}
-      {onSelectLocation && isDraggableTarget && (
-        <div className="absolute bottom-3 left-3 z-10 bg-neutral-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-neutral-700/80 text-[11px] text-neutral-300 shadow flex items-center gap-2">
-          <MapPin className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-          <span>Toca el mapa o arrastra el pin para fijar la entrega</span>
+          {/* Right: Compact Zone & Fare Pill + GPS Status Dot */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {selectedDeliveryCalc && (
+              <span
+                className="px-2 py-0.5 rounded-lg text-[10px] font-black border bg-neutral-900/90 whitespace-nowrap"
+                style={{
+                  color: selectedDeliveryCalc.zone.color,
+                  borderColor: `${selectedDeliveryCalc.zone.color}60`,
+                }}
+              >
+                Zona {selectedDeliveryCalc.tier} • ${selectedDeliveryCalc.fee} DOP
+              </span>
+            )}
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                isLiveGpsActive ? 'bg-emerald-400 animate-pulse' : 'bg-blue-400'
+              }`}
+              title={isLiveGpsActive ? `GPS Activo (±${userDeviceAccuracy ?? 12}m)` : 'GPS listo'}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -38,12 +38,17 @@ export function generateWhatsAppLink(phone: string, message: string): string {
 
 export interface SingleProductOrderParams {
   productName: string;
+  productType?: 'liquido' | 'vape';
+  variantColor?: string;
   flavorCategory?: string;
   nicotineMg?: number;
   imageUrl?: string;
   portion: PortionType;
   quantity: number;
   unitPrice: number;
+  extraLiquidName?: string;
+  extraLiquidPortion?: PortionType;
+  extraLiquidPrice?: number;
   customerName?: string;
   customerPhone?: string;
   deliveryAddress?: string;
@@ -54,11 +59,18 @@ export interface SingleProductOrderParams {
 }
 
 /**
- * Builds an organized, beautiful WhatsApp message to place an order for a single liquid directly.
+ * Builds an organized, beautiful WhatsApp message to place an order for a single liquid or vape directly.
  */
 export function buildSingleProductWhatsAppMessage(params: SingleProductOrderParams): string {
-  const portionName = params.portion === 'tanque_lleno' ? 'Tanque Lleno (100%)' : 'Mitad de Tanque (50%)';
-  const subtotal = params.unitPrice * params.quantity;
+  const isVape = params.productType === 'vape';
+  const portionName = isVape
+    ? `Equipo Vape Nuevo${params.variantColor ? ` • Color: ${params.variantColor}` : ''}`
+    : params.portion === 'tanque_lleno'
+    ? 'Tanque Lleno (100%)'
+    : 'Mitad de Tanque (50%)';
+  const baseSubtotal = params.unitPrice * params.quantity;
+  const extraLiquidSubtotal = params.extraLiquidName && params.extraLiquidPrice ? params.extraLiquidPrice : 0;
+  const subtotal = baseSubtotal + extraLiquidSubtotal;
   const delivery = params.deliveryFee ?? 50;
   const grandTotal = subtotal + delivery;
 
@@ -78,20 +90,28 @@ export function buildSingleProductWhatsAppMessage(params: SingleProductOrderPara
   }
 
   const lines = [
-    `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UNA RECARGA DE VAPE* 💨`,
+    isVape
+      ? `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UN EQUIPO VAPE* 💨`
+      : `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UNA RECARGA DE VAPE* 💨`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     `🏪 *Punto de Salida:* ${params.storeName}`,
     `📍 ${params.storeAddress}`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `📦 *DETALLE DEL LÍQUIDO:*`,
-    `• *Líquido:* ${params.productName}`,
+    isVape ? `📦 *DETALLE DEL EQUIPO VAPE:*` : `📦 *DETALLE DEL LÍQUIDO:*`,
+    `• *${isVape ? 'Equipo Vape' : 'Líquido'}:* ${params.productName}`,
+    isVape && params.variantColor ? `• *Color Elegido:* ${params.variantColor}` : null,
     params.flavorCategory ? `• *Categoría:* ${params.flavorCategory}` : null,
-    params.nicotineMg !== undefined ? `• *Nicotina:* ${params.nicotineMg} mg` : null,
-    `• *Porción:* ${portionName}`,
-    `• *Cantidad:* ${params.quantity} porción(es)`,
+    !isVape && params.nicotineMg !== undefined ? `• *Nicotina:* ${params.nicotineMg} mg` : null,
+    `• *Modalidad:* ${portionName}`,
+    `• *Cantidad:* ${params.quantity} ${isVape ? 'unidad(es)' : 'porción(es)'}`,
     `• *Precio Unidad:* $${params.unitPrice} DOP`,
-    `• *Subtotal Líquido:* $${subtotal} DOP`,
-    photoUrl ? `📸 *Foto del Líquido:* ${photoUrl}` : null,
+    params.extraLiquidName
+      ? `• *+ Recarga de Líquido Incluida:* ${params.extraLiquidName} (${
+          params.extraLiquidPortion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad de Tanque'
+        } - +$${params.extraLiquidPrice || 0} DOP)`
+      : null,
+    `• *Subtotal Productos:* $${subtotal} DOP`,
+    photoUrl ? `📸 *Foto del Producto:* ${photoUrl}` : null,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     `📍 *DATOS DE ENTREGA & UBICACIÓN:*`,
     params.customerName ? `• *Cliente:* ${params.customerName}` : null,
@@ -102,7 +122,11 @@ export function buildSingleProductWhatsAppMessage(params: SingleProductOrderPara
     `🛵 *Delivery Estimado (1.5 km = $25 DOP):* $${delivery} DOP`,
     `💰 *TOTAL A PAGAR AL REPARTIDOR:* $${grandTotal} DOP`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `⚠️ *Nota:* Modalidad de recarga directa en el tanque al llegar la moto. ¡Listo para recibir la dosis! 🚀`,
+    isVape
+      ? `⚠️ *Nota:* Entrega de equipo Vape a domicilio${
+          params.extraLiquidName ? ' con su primera recarga de líquido lista' : ''
+        }. ¡Listo para recibirlo! 🚀`
+      : `⚠️ *Nota:* Modalidad de recarga directa en el tanque al llegar la moto. ¡Listo para recibir la dosis! 🚀`,
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -116,6 +140,8 @@ export interface FullCartOrderParams {
   location: Coordinates;
   items: Array<{
     productName: string;
+    productType?: 'liquido' | 'vape';
+    variantColor?: string;
     portion: PortionType;
     unitPrice: number;
     quantity: number;
@@ -139,7 +165,12 @@ export function buildFullCartWhatsAppMessage(params: FullCartOrderParams): strin
   const mapsLink = `https://maps.google.com/?q=${params.location.lat.toFixed(5)},${params.location.lng.toFixed(5)}`;
 
   const itemsList = params.items.map((it, idx) => {
-    const portionName = it.portion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad';
+    const isVape = it.productType === 'vape';
+    const portionName = isVape
+      ? `Equipo Vape${it.variantColor ? ` • Color: ${it.variantColor}` : ''}`
+      : it.portion === 'tanque_lleno'
+      ? 'Tanque Lleno'
+      : 'Mitad';
     let photoLine = '';
     if (it.imageUrl && !it.imageUrl.startsWith('data:')) {
       const fullUrl = it.imageUrl.startsWith('http')
@@ -165,7 +196,7 @@ export function buildFullCartWhatsAppMessage(params: FullCartOrderParams): strin
       : '';
 
   const lines = [
-    `💨 *NUEVO PEDIDO DE RECARGA - BLACK VAPE* 💨`,
+    `💨 *NUEVO PEDIDO - BLACK VAPE* 💨`,
     params.orderId ? `🔖 *Pedido:* #${params.orderId}` : null,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     `🏪 *Punto de Salida:* ${params.storeName}`,
@@ -177,16 +208,16 @@ export function buildFullCartWhatsAppMessage(params: FullCartOrderParams): strin
     `• *Dirección:* ${params.deliveryAddress}`,
     `🗺️ *Ubicación GPS:* ${mapsLink}`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `📦 *LÍQUIDOS SOLICITADOS:*`,
+    `📦 *PRODUCTOS SOLICITADOS:*`,
     itemsList,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `💵 *Subtotal Líquidos:* $${params.subtotalLiquid} DOP`,
+    `💵 *Subtotal Productos:* $${params.subtotalLiquid} DOP`,
     `🛵 *Tarifa Delivery:* $${params.deliveryFee} DOP`,
     `💰 *TOTAL A PAGAR:* $${params.totalAmount} DOP`,
     `💳 *Método de Pago:* ${paymentText}${cashDetail}`,
     params.specialNotes ? `📝 *Nota:* "${params.specialNotes}"` : null,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `⚠️ *Recordatorio:* El motorizado llega con los frascos y echa la porción exacta en tu tanque.`,
+    `⚠️ *Recordatorio:* El motorizado lleva tu pedido y dispensa las recargas directamente en tu tanque.`,
   ].filter(Boolean);
 
   return lines.join('\n');

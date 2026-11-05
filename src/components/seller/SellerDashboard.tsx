@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Product, Order, StoreConfig, Coordinates, UserAccount } from '../../types';
+import { Product, Order, StoreConfig, Coordinates, UserAccount, ProductType, VapeVariant } from '../../types';
 import { calculateFinancialStats, generateInventoryReport, generateReportCSV, TimeFilter } from '../../utils/finance';
 import { calculateDistanceKm } from '../../utils/routing';
 import { generateWhatsAppLink, WhatsAppTemplates } from '../../utils/whatsapp';
@@ -37,6 +37,8 @@ import {
   Volume2,
   VolumeX,
   BellRing,
+  Wind,
+  Palette,
 } from 'lucide-react';
 
 import { DriverManagement } from './DriverManagement';
@@ -64,6 +66,18 @@ const PRESET_IMAGES = [
   { name: 'Pop Iced Mango Dragon Fruit', url: '/liquidos/pop-iced-mango-dragon-fruit-100ml-liquids-liquids-pop-vapors-melca-distro-892_500x.webp' },
   { name: 'Pop Iced Mango Strawberry', url: '/liquidos/pop-iced-mango-strawberry-100ml-liquids-fresa-liquids-pop-vapors-melca-distro-715_500x.webp' },
   { name: 'Pop Iced Strawberry Watermelon', url: '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp' },
+];
+
+const PRESET_VAPE_COLORS = [
+  { name: 'Rojo', hex: '#ef4444' },
+  { name: 'Verde', hex: '#10b981' },
+  { name: 'Azul', hex: '#3b82f6' },
+  { name: 'Negro', hex: '#171717' },
+  { name: 'Morado', hex: '#9333ea' },
+  { name: 'Rosa', hex: '#ec4899' },
+  { name: 'Dorado', hex: '#eab308' },
+  { name: 'Plata', hex: '#94a3b8' },
+  { name: 'Blanco', hex: '#f8fafc' },
 ];
 
 export const SellerDashboard: React.FC<SellerDashboardProps> = ({
@@ -143,6 +157,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   }, [store]);
 
   // New / Edited product form
+  const [formProductType, setFormProductType] = useState<ProductType>('liquido');
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('Frutales');
   const [formNicotine, setFormNicotine] = useState(35);
@@ -152,6 +167,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   const [formPriceFullTank, setFormPriceFullTank] = useState(100);
   const [formPriceHalfTank, setFormPriceHalfTank] = useState(50);
   const [formDescription, setFormDescription] = useState('');
+  const [formVariants, setFormVariants] = useState<VapeVariant[]>([]);
+  const [uploadingVariantId, setUploadingVariantId] = useState<string | null>(null);
+  const [inventoryFilter, setInventoryFilter] = useState<'todos' | 'liquido' | 'vape'>('todos');
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [compressionSummary, setCompressionSummary] = useState<string | null>(null);
@@ -199,6 +218,25 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     }
   };
 
+  const handleQuickVariantRestock = (productId: string, variantId: string, delta: number) => {
+    let restockedItem: Product | null = null;
+    const updated = products.map((p) => {
+      if (p.id === productId && p.variants) {
+        const nextVariants = p.variants.map((v) =>
+          v.id === variantId ? { ...v, stockUnits: Math.max(0, v.stockUnits + delta) } : v
+        );
+        const totalStock = nextVariants.reduce((sum, v) => sum + v.stockUnits, 0);
+        restockedItem = { ...p, variants: nextVariants, stockUnits: totalStock };
+        return restockedItem;
+      }
+      return p;
+    });
+    onSaveProducts(updated);
+    if (restockedItem) {
+      saveProductToServer(restockedItem).catch(console.warn);
+    }
+  };
+
   const handleImageFileSelect = async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -224,16 +262,78 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     }
   };
 
-  const openAddModal = () => {
+  const handleVariantImageFileSelect = async (variantId: string, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageUploadError('Por favor selecciona un archivo de imagen válido para este color.');
+      return;
+    }
+    setImageUploadError(null);
+    setUploadingVariantId(variantId);
+    try {
+      const result = await compressProductImage(file);
+      setFormVariants((prev) =>
+        prev.map((v) => (v.id === variantId ? { ...v, imageUrl: result.dataUrl } : v))
+      );
+      setCompressionSummary(
+        `Foto de color comprimida: ${result.compressedKb} KB (Ahorro ${result.savedPercent}%)`
+      );
+    } catch (err: any) {
+      setImageUploadError(err.message || 'No se pudo optimizar la foto del color.');
+    } finally {
+      setUploadingVariantId(null);
+    }
+  };
+
+  const handleAddVariantColor = (colorName: string = 'Nuevo Color', colorHex: string = '#9333ea') => {
+    const newVar: VapeVariant = {
+      id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      colorName,
+      colorHex,
+      imageUrl: formImageUrl || '/logo-black-vape.jpeg',
+      stockUnits: 5,
+    };
+    setFormVariants((prev) => [...prev, newVar]);
+  };
+
+  const openAddModal = (defaultType: ProductType = 'liquido') => {
     setEditingProduct(null);
+    setFormProductType(defaultType);
     setFormName('');
-    setFormCategory('Frutales');
-    setFormNicotine(35);
-    setFormImageUrl(PRESET_IMAGES[0].url);
-    setFormStock(30);
-    setFormCostPrice(20);
-    setFormPriceFullTank(100);
-    setFormPriceHalfTank(50);
+    if (defaultType === 'vape') {
+      setFormCategory('Equipos Vape');
+      setFormNicotine(0);
+      setFormImageUrl('/logo-black-vape.jpeg');
+      setFormStock(10);
+      setFormCostPrice(350);
+      setFormPriceFullTank(650);
+      setFormPriceHalfTank(650);
+      setFormVariants([
+        {
+          id: `var-${Date.now()}-1`,
+          colorName: 'Rojo',
+          colorHex: '#ef4444',
+          imageUrl: '/logo-black-vape.jpeg',
+          stockUnits: 5,
+        },
+        {
+          id: `var-${Date.now()}-2`,
+          colorName: 'Verde',
+          colorHex: '#10b981',
+          imageUrl: '/logo-black-vape.jpeg',
+          stockUnits: 5,
+        },
+      ]);
+    } else {
+      setFormCategory('Frutales');
+      setFormNicotine(35);
+      setFormImageUrl(PRESET_IMAGES[0].url);
+      setFormStock(30);
+      setFormCostPrice(20);
+      setFormPriceFullTank(100);
+      setFormPriceHalfTank(50);
+      setFormVariants([]);
+    }
     setFormDescription('');
     setUploadedFileName(null);
     setCompressionSummary(null);
@@ -242,16 +342,33 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   };
 
   const openEditModal = (p: Product) => {
+    const isVape = p.productType === 'vape';
     setEditingProduct(p);
+    setFormProductType(isVape ? 'vape' : 'liquido');
     setFormName(p.name);
     setFormCategory(p.flavorCategory);
     setFormNicotine(p.nicotineMg);
     setFormImageUrl(p.imageUrl);
     setFormStock(p.stockUnits);
     setFormCostPrice(p.costPrice);
-    setFormPriceFullTank(p.priceFullTank || 100);
-    setFormPriceHalfTank(p.priceHalfTank || 50);
+    setFormPriceFullTank(p.priceFullTank || (isVape ? 650 : 100));
+    setFormPriceHalfTank(p.priceHalfTank || (isVape ? p.priceFullTank || 650 : 50));
     setFormDescription(p.description || '');
+    setFormVariants(
+      isVape && p.variants && p.variants.length > 0
+        ? p.variants.map((v) => ({ ...v }))
+        : isVape
+        ? [
+            {
+              id: `var-${Date.now()}-1`,
+              colorName: 'Estándar',
+              colorHex: '#9333ea',
+              imageUrl: p.imageUrl || '/logo-black-vape.jpeg',
+              stockUnits: p.stockUnits || 5,
+            },
+          ]
+        : []
+    );
     setUploadedFileName(p.imageUrl.startsWith('data:image') ? 'Imagen optimizada en memoria' : null);
     setCompressionSummary(null);
     setImageUploadError(null);
@@ -262,18 +379,47 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     e.preventDefault();
     if (!formName.trim()) return;
 
+    const isVape = formProductType === 'vape';
+    const cleanedVariants = isVape
+      ? formVariants
+          .filter((v) => v.colorName.trim().length > 0)
+          .map((v) => ({
+            ...v,
+            colorName: v.colorName.trim(),
+            imageUrl: v.imageUrl || formImageUrl || '/logo-black-vape.jpeg',
+            stockUnits: Math.max(0, Number(v.stockUnits) || 0),
+          }))
+      : undefined;
+
+    if (isVape && (!cleanedVariants || cleanedVariants.length === 0)) {
+      setImageUploadError('Agrega al menos 1 variante de color con su foto y stock para el Vape.');
+      return;
+    }
+
+    const totalStock =
+      isVape && cleanedVariants
+        ? cleanedVariants.reduce((sum, v) => sum + v.stockUnits, 0)
+        : Number(formStock);
+    const primaryImage =
+      isVape && cleanedVariants && cleanedVariants[0]?.imageUrl
+        ? cleanedVariants[0].imageUrl
+        : formImageUrl || PRESET_IMAGES[0].url;
+    const fixedPrice = Number(formPriceFullTank) || (isVape ? 650 : 100);
+
     if (editingProduct) {
       const updatedProduct: Product = {
         ...editingProduct,
         name: formName.trim(),
-        flavorCategory: formCategory,
-        nicotineMg: Number(formNicotine),
-        imageUrl: formImageUrl || PRESET_IMAGES[0].url,
-        stockUnits: Number(formStock),
+        productType: isVape ? 'vape' : 'liquido',
+        flavorCategory: isVape ? formCategory || 'Equipos Vape' : formCategory,
+        nicotineMg: isVape ? 0 : Number(formNicotine),
+        imageUrl: primaryImage,
+        stockUnits: totalStock,
         costPrice: Number(formCostPrice),
-        priceFullTank: Number(formPriceFullTank) || 100,
-        priceHalfTank: Number(formPriceHalfTank) || 50,
+        priceFullTank: fixedPrice,
+        priceHalfTank: isVape ? fixedPrice : Number(formPriceHalfTank) || 50,
         description: formDescription.trim(),
+        variants: isVape ? cleanedVariants : undefined,
       };
       const updated = products.map((p) => (p.id === editingProduct.id ? updatedProduct : p));
       onSaveProducts(updated);
@@ -282,14 +428,16 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
       const newProduct: Product = {
         id: `prod-${Date.now()}`,
         name: formName.trim(),
-        flavorCategory: formCategory,
-        nicotineMg: Number(formNicotine),
-        imageUrl: formImageUrl || PRESET_IMAGES[0].url,
-        stockUnits: Number(formStock),
+        productType: isVape ? 'vape' : 'liquido',
+        flavorCategory: isVape ? formCategory || 'Equipos Vape' : formCategory,
+        nicotineMg: isVape ? 0 : Number(formNicotine),
+        imageUrl: primaryImage,
+        stockUnits: totalStock,
         costPrice: Number(formCostPrice),
-        priceFullTank: Number(formPriceFullTank) || 100,
-        priceHalfTank: Number(formPriceHalfTank) || 50,
+        priceFullTank: fixedPrice,
+        priceHalfTank: isVape ? fixedPrice : Number(formPriceHalfTank) || 50,
         description: formDescription.trim(),
+        variants: isVape ? cleanedVariants : undefined,
         isActive: true,
       };
       onSaveProducts([...products, newProduct]);
@@ -301,10 +449,9 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
   };
 
   const handleDeleteProduct = (productId: string) => {
-    if (confirm('¿Seguro que deseas eliminar este líquido del catálogo?')) {
-      onSaveProducts(products.filter((p) => p.id !== productId));
-      deleteProductFromServer(productId).catch(console.warn);
-    }
+    onSaveProducts(products.filter((p) => p.id !== productId));
+    deleteProductFromServer(productId).catch(console.warn);
+    setDeletingProductId(null);
   };
 
   const handleSaveStoreConfig = (e: React.FormEvent) => {
@@ -435,7 +582,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              🧪 Gestión de Líquidos
+              🧪 Líquidos & Vapes
             </button>
             <button
               type="button"
@@ -907,14 +1054,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                   Análisis de Rotación de Inventario y Ganancia por Sabor
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="py-2 px-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nuevo Líquido</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openAddModal('liquido')}
+                  className="py-2 px-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nuevo Líquido</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAddModal('vape')}
+                  className="py-2 px-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+                >
+                  <Wind className="w-4 h-4" />
+                  <span>Nuevo Vape</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -985,105 +1142,274 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
       {/* TAB 2: PRODUCT & INVENTORY MANAGEMENT */}
       {activeTab === 'inventario' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-white">Catálogo de Líquidos Subidos</h3>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Agregar Nuevo Líquido</span>
-            </button>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-4 rounded-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-black text-white mr-2">Catálogo & Stock</h3>
+              <div className="inline-flex p-1 bg-neutral-950 border border-neutral-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setInventoryFilter('todos')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                    inventoryFilter === 'todos'
+                      ? 'bg-violet-600 text-white shadow'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  Todos ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryFilter('liquido')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                    inventoryFilter === 'liquido'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  💧 Líquidos ({products.filter((p) => p.productType !== 'vape').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryFilter('vape')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                    inventoryFilter === 'vape'
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  💨 Equipos Vape ({products.filter((p) => p.productType === 'vape').length})
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openAddModal('liquido')}
+                className="py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Subir Líquido</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openAddModal('vape')}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow cursor-pointer"
+              >
+                <Wind className="w-4 h-4" />
+                <span>+ Subir Equipo Vape (Colores)</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="bg-neutral-900 border border-neutral-800 rounded-3xl p-4 shadow-xl flex flex-col justify-between"
-              >
-                <div>
-                  <div className="relative h-40 rounded-2xl overflow-hidden bg-neutral-950 mb-3 border border-neutral-800">
-                    <img
-                      src={product.imageUrl}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-neutral-950/80 text-[10px] font-bold text-neutral-200">
-                      {product.flavorCategory}
-                    </div>
-                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-neutral-900/90 text-[10px] font-bold text-emerald-400">
-                      Stock: {product.stockUnits}
-                    </div>
-                  </div>
+            {products
+              .filter((p) => {
+                if (inventoryFilter === 'vape') return p.productType === 'vape';
+                if (inventoryFilter === 'liquido') return p.productType !== 'vape';
+                return true;
+              })
+              .map((product) => {
+                const isVape = product.productType === 'vape';
+                const isDeletingThis = deletingProductId === product.id;
 
-                  <h4 className="font-bold text-sm text-white">{product.name}</h4>
-                  <div className="flex items-center justify-between gap-2 text-xs text-neutral-400 mt-1">
-                    <span>
-                      {product.nicotineMg}mg • Costo: <strong className="text-amber-300">${product.costPrice} DOP</strong>
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleQuickRestock(product.id, -1)}
-                        className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold text-[11px] cursor-pointer"
-                        title="Restar 1 unidad de stock"
-                      >
-                        -1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleQuickRestock(product.id, 1)}
-                        className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 font-bold text-[11px] cursor-pointer"
-                        title="Sumar 1 unidad de stock"
-                      >
-                        +1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleQuickRestock(product.id, 10)}
-                        className="px-2 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] cursor-pointer"
-                        title="Sumar 10 unidades de stock"
-                      >
-                        +10
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 p-2 rounded-xl bg-neutral-950 text-xs text-neutral-300 space-y-1 border border-neutral-800">
-                    <div className="flex justify-between">
-                      <span>Tanque Lleno:</span>
-                      <strong className="text-emerald-400">${product.priceFullTank || 100} DOP</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Mitad de Tanque:</span>
-                      <strong className="text-cyan-400">${product.priceHalfTank || 50} DOP</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-neutral-800 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(product)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                return (
+                  <div
+                    key={product.id}
+                    className={`bg-neutral-900 border rounded-3xl p-4 shadow-xl flex flex-col justify-between ${
+                      isVape ? 'border-cyan-500/40' : 'border-neutral-800'
+                    }`}
                   >
-                    <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Editar Costo / Stock / Foto</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteProduct(product.id)}
-                    className="p-2 rounded-xl bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-300 text-xs transition-all cursor-pointer"
-                    title="Eliminar producto"
-                    aria-label="Eliminar producto"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+                    <div>
+                      <div className="relative h-40 rounded-2xl overflow-hidden bg-neutral-950 mb-3 border border-neutral-800">
+                        <img
+                          src={
+                            isVape && product.variants && product.variants[0]?.imageUrl
+                              ? product.variants[0].imageUrl
+                              : product.imageUrl
+                          }
+                          alt={product.name}
+                          className="w-full h-full object-contain p-2"
+                        />
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                              isVape
+                                ? 'bg-cyan-950/90 border border-cyan-500/60 text-cyan-300'
+                                : 'bg-neutral-950/80 text-neutral-200'
+                            }`}
+                          >
+                            {isVape ? '💨 EQUIPO VAPE' : product.flavorCategory}
+                          </span>
+                        </div>
+                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-neutral-900/90 text-[10px] font-bold text-emerald-400">
+                          Stock Total: {product.stockUnits}
+                        </div>
+                      </div>
+
+                      <h4 className="font-bold text-sm text-white">{product.name}</h4>
+
+                      {isVape ? (
+                        <div className="space-y-2.5 mt-2">
+                          <div className="flex items-center justify-between p-2 rounded-xl bg-neutral-950 border border-cyan-500/30 text-xs">
+                            <div>
+                              <span className="text-neutral-400 block text-[10px]">Costo Unidad:</span>
+                              <strong className="text-amber-300">${product.costPrice} DOP</strong>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-neutral-400 block text-[10px]">Precio Venta Fijo:</span>
+                              <strong className="text-cyan-400 text-sm">${product.priceFullTank} DOP</strong>
+                            </div>
+                          </div>
+
+                          {/* Color Variants & Individual Stock List */}
+                          {product.variants && product.variants.length > 0 && (
+                            <div className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 flex items-center gap-1">
+                                <Palette className="w-3 h-3" />
+                                Colores y Stock Independiente ({product.variants.length})
+                              </span>
+                              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                {product.variants.map((v) => (
+                                  <div
+                                    key={v.id}
+                                    className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <img
+                                        src={v.imageUrl || product.imageUrl}
+                                        alt={v.colorName}
+                                        className="w-7 h-7 rounded-md object-contain bg-black border border-neutral-700 shrink-0"
+                                      />
+                                      <span
+                                        className="w-3 h-3 rounded-full border border-white/30 shrink-0"
+                                        style={{ backgroundColor: v.colorHex || '#9333ea' }}
+                                      />
+                                      <span className="font-bold text-white truncate">{v.colorName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleQuickVariantRestock(product.id, v.id, -1)}
+                                        className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-[11px] cursor-pointer"
+                                      >
+                                        -
+                                      </button>
+                                      <span
+                                        className={`font-mono font-bold text-xs min-w-[22px] text-center ${
+                                          v.stockUnits <= 0 ? 'text-red-400' : 'text-emerald-400'
+                                        }`}
+                                      >
+                                        {v.stockUnits}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleQuickVariantRestock(product.id, v.id, 1)}
+                                        className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 font-bold text-[11px] cursor-pointer"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-2 text-xs text-neutral-400 mt-1">
+                            <span>
+                              {product.nicotineMg}mg • Costo:{' '}
+                              <strong className="text-amber-300">${product.costPrice} DOP</strong>
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleQuickRestock(product.id, -1)}
+                                className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold text-[11px] cursor-pointer"
+                                title="Restar 1 unidad de stock"
+                              >
+                                -1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickRestock(product.id, 1)}
+                                className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-emerald-300 font-bold text-[11px] cursor-pointer"
+                                title="Sumar 1 unidad de stock"
+                              >
+                                +1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickRestock(product.id, 10)}
+                                className="px-2 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] cursor-pointer"
+                                title="Sumar 10 unidades de stock"
+                              >
+                                +10
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 p-2 rounded-xl bg-neutral-950 text-xs text-neutral-300 space-y-1 border border-neutral-800">
+                            <div className="flex justify-between">
+                              <span>Tanque Lleno:</span>
+                              <strong className="text-emerald-400">${product.priceFullTank || 100} DOP</strong>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Mitad de Tanque:</span>
+                              <strong className="text-cyan-400">${product.priceHalfTank || 50} DOP</strong>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-neutral-800 flex gap-2">
+                      {isDeletingThis ? (
+                        <div className="flex items-center gap-2 w-full">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(product.id)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black cursor-pointer"
+                          >
+                            Sí, Eliminar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingProductId(null)}
+                            className="py-2 px-3 rounded-xl bg-neutral-800 text-neutral-300 text-xs font-bold cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(product)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>
+                              {isVape ? 'Editar Colores / Stock / Precio' : 'Editar Costo / Stock / Foto'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingProductId(product.id)}
+                            className="p-2 rounded-xl bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-300 text-xs transition-all cursor-pointer"
+                            title="Eliminar producto"
+                            aria-label="Eliminar producto"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
@@ -1259,11 +1585,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
       {/* Add / Edit Product Modal */}
       {isAddingNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-xl bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-7 shadow-2xl text-neutral-100 my-auto">
+          <div className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-7 shadow-2xl text-neutral-100 my-auto max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
-              <h3 className="text-lg font-black text-white">
-                {editingProduct ? 'Editar Líquido' : 'Subir Nuevo Líquido'}
-              </h3>
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  {editingProduct
+                    ? formProductType === 'vape'
+                      ? 'Editar Equipo Vape y sus Colores'
+                      : 'Editar Líquido de Recarga'
+                    : formProductType === 'vape'
+                    ? 'Subir Nuevo Equipo Vape (Con Colores y Fotos)'
+                    : 'Subir Nuevo Líquido de Recarga'}
+                </h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  {formProductType === 'vape'
+                    ? 'Sube una o varias fotos asociadas a cada color del Vape y define el stock individual de cada color.'
+                    : 'Configura el sabor, nicotina, costo por porción y foto del líquido.'}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsAddingNew(false)}
@@ -1275,233 +1614,560 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
             </div>
 
             <form onSubmit={handleSaveProduct} className="mt-5 space-y-4">
+              {/* Product Type Selector: Líquido vs Equipo Vape */}
+              <div className="grid grid-cols-2 gap-2.5 p-1.5 bg-neutral-950 border border-neutral-800 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormProductType('liquido');
+                    if (formCategory === 'Equipos Vape') setFormCategory('Frutales');
+                    if (formPriceFullTank > 250) {
+                      setFormPriceFullTank(100);
+                      setFormPriceHalfTank(50);
+                      setFormCostPrice(20);
+                    }
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                    formProductType === 'liquido'
+                      ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/30'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Droplet className="w-4 h-4" />
+                  <span>💧 Líquido de Recarga</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormProductType('vape');
+                    setFormCategory('Equipos Vape');
+                    if (formPriceFullTank <= 150) {
+                      setFormPriceFullTank(650);
+                      setFormPriceHalfTank(650);
+                      setFormCostPrice(350);
+                    }
+                    if (formVariants.length === 0) {
+                      setFormVariants([
+                        {
+                          id: `var-${Date.now()}-1`,
+                          colorName: 'Rojo',
+                          colorHex: '#ef4444',
+                          imageUrl: formImageUrl || '/logo-black-vape.jpeg',
+                          stockUnits: 5,
+                        },
+                        {
+                          id: `var-${Date.now()}-2`,
+                          colorName: 'Verde',
+                          colorHex: '#10b981',
+                          imageUrl: formImageUrl || '/logo-black-vape.jpeg',
+                          stockUnits: 5,
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                    formProductType === 'vape'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-600/30'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Wind className="w-4 h-4" />
+                  <span>💨 Equipo Vape (Por Colores)</span>
+                </button>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-neutral-300 mb-1">
-                  Nombre del Líquido *
+                  {formProductType === 'vape'
+                    ? 'Nombre / Modelo del Vape *'
+                    : 'Nombre del Líquido *'}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Menta Polar Glacial o Mango Freeze"
+                  placeholder={
+                    formProductType === 'vape'
+                      ? 'Ej: Vape Puff Recargable Pro, Caliburn G3, Oxva Xlim...'
+                      : 'Ej: Menta Polar Glacial o Mango Freeze'
+                  }
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">Categoría</label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                  >
-                    <option value="Frutales">Frutales</option>
-                    <option value="Mentolados">Mentolados</option>
-                    <option value="Postres">Postres</option>
-                    <option value="Tabacos">Tabacos</option>
-                    <option value="Bebidas">Bebidas</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">
-                    Nicotina (mg)
-                  </label>
-                  <select
-                    value={formNicotine}
-                    onChange={(e) => setFormNicotine(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                  >
-                    <option value={0}>0 mg (Sin nicotina)</option>
-                    <option value={3}>3 mg (Freebase suave)</option>
-                    <option value={6}>6 mg (Freebase medio)</option>
-                    <option value={20}>20 mg (Salt suave)</option>
-                    <option value={35}>35 mg (Salt medio)</option>
-                    <option value={50}>50 mg (Salt fuerte)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">
-                    Stock Inicial (Porciones) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={formStock}
-                    onChange={(e) => setFormStock(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">
-                    Precio de Costo (DOP por porción) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={formCostPrice}
-                    onChange={(e) => setFormCostPrice(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-              </div>
-
-              {/* Editable Public Prices */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">
-                    Precio Tanque Lleno (DOP) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={formPriceFullTank}
-                    onChange={(e) => setFormPriceFullTank(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-neutral-300 mb-1">
-                    Precio Medio Tanque (DOP) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={formPriceHalfTank}
-                    onChange={(e) => setFormPriceHalfTank(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-cyan-400 font-bold focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-              </div>
-
-              {/* Photo upload from Desktop/Device, presets, or custom URL */}
-              <div className="space-y-2.5">
-                <label className="block text-xs font-bold text-neutral-300">
-                  Foto del Líquido (Sube desde tu Escritorio con compresión inteligente o elige del catálogo)
-                </label>
-
-                {/* Desktop Upload & Live Preview Box */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3 rounded-2xl bg-neutral-950 border border-neutral-800">
-                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 shrink-0 flex items-center justify-center mx-auto sm:mx-0">
-                    {formImageUrl ? (
-                      <img
-                        src={formImageUrl}
-                        alt="Vista previa"
-                        className="w-full h-full object-contain p-1"
-                      />
-                    ) : (
-                      <ImageIcon className="w-7 h-7 text-neutral-600" />
-                    )}
-                  </div>
-
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const droppedFile = e.dataTransfer?.files?.[0];
-                      if (droppedFile) handleImageFileSelect(droppedFile);
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 p-3 rounded-xl border-2 border-dashed border-violet-500/40 hover:border-violet-400 bg-violet-950/15 hover:bg-violet-950/30 transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1"
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/avif,image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImageFileSelect(file);
-                        e.target.value = '';
-                      }}
-                      className="hidden"
-                    />
-                    <div className="flex items-center gap-1.5 text-violet-300 font-bold text-xs">
-                      <Upload className="w-4 h-4 text-violet-400" />
-                      <span>
-                        {isUploadingImage
-                          ? 'Comprimiendo foto para ahorrar memoria...'
-                          : 'Subir imagen desde el Escritorio / Celular'}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-neutral-400">
-                      {uploadedFileName
-                        ? `✓ Archivo cargado: ${uploadedFileName}`
-                        : 'Haz clic aquí o arrastra una foto (compresión automática WebP)'}
-                    </span>
-                    {compressionSummary && (
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg mt-0.5">
-                        ⚡ {compressionSummary}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {imageUploadError && (
-                  <p className="text-[11px] text-red-400 font-semibold">{imageUploadError}</p>
-                )}
-
-                {/* Preset Thumbnails */}
-                <div>
-                  <span className="text-[10px] font-semibold text-neutral-400 block mb-1.5">
-                    O selecciona una foto del catálogo base:
-                  </span>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2">
-                    {PRESET_IMAGES.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setFormImageUrl(img.url);
-                          setUploadedFileName(null);
-                          setImageUploadError(null);
-                        }}
-                        className={`h-14 rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-neutral-950 p-1 flex items-center justify-center ${
-                          formImageUrl === img.url
-                            ? 'border-violet-500 scale-105 shadow'
-                            : 'border-neutral-800 opacity-60 hover:opacity-100'
-                        }`}
-                        title={img.name}
+              {formProductType === 'vape' ? (
+                <>
+                  {/* VAPE PRICING & CATEGORY */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Categoría de Vape
+                      </label>
+                      <select
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none focus:border-cyan-500"
                       >
-                        <img src={img.url} alt={img.name} className="w-full h-full object-contain" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                        <option value="Equipos Vape">Equipos Vape</option>
+                        <option value="Pods Recargables">Pods Recargables</option>
+                        <option value="Vape Puff">Vape Puff</option>
+                        <option value="Kits & Mods">Kits & Mods</option>
+                      </select>
+                    </div>
 
-                {/* Custom URL fallback */}
-                <input
-                  type="text"
-                  placeholder="O pega aquí una URL de imagen externa (https://...)"
-                  value={formImageUrl.startsWith('data:image') ? '' : formImageUrl}
-                  onChange={(e) => {
-                    setFormImageUrl(e.target.value);
-                    setUploadedFileName(null);
-                  }}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-neutral-300 focus:outline-none focus:border-violet-500"
-                />
-              </div>
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Costo Compra (DOP) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        value={formCostPrice}
+                        onChange={(e) => setFormCostPrice(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-amber-300 font-bold focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Precio Venta Fijo (DOP) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={formPriceFullTank}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setFormPriceFullTank(val);
+                          setFormPriceHalfTank(val);
+                        }}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-cyan-400 font-black focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* MULTI-COLOR & PHOTO VARIANT MANAGER */}
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-cyan-500/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                          <Palette className="w-4 h-4" />
+                          Colores, Fotos y Stock por Color ({formVariants.length})
+                        </span>
+                        <p className="text-[11px] text-neutral-400">
+                          Cada color tiene su propia foto y su propio inventario. Stock total sumado:{' '}
+                          <strong className="text-emerald-400">
+                            {formVariants.reduce((s, v) => s + (Number(v.stockUnits) || 0), 0)} unidades
+                          </strong>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddVariantColor('Nuevo Color', '#3b82f6')}
+                        className="py-1.5 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 shadow"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Agregar Otro Color</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Preset Color Pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] text-neutral-400 font-semibold mr-1">
+                        Añadir rápido:
+                      </span>
+                      {PRESET_VAPE_COLORS.map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => handleAddVariantColor(preset.name, preset.hex)}
+                          className="py-1 px-2.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[11px] font-bold text-neutral-200 flex items-center gap-1.5 cursor-pointer transition-all"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full border border-white/30"
+                            style={{ backgroundColor: preset.hex }}
+                          />
+                          <span>+ {preset.name}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {compressionSummary && (
+                      <div className="text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                        ⚡ {compressionSummary}
+                      </div>
+                    )}
+
+                    {imageUploadError && (
+                      <p className="text-[11px] text-red-400 font-semibold">{imageUploadError}</p>
+                    )}
+
+                    {/* Variant Cards */}
+                    <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                      {formVariants.map((variant, idx) => (
+                        <div
+                          key={variant.id}
+                          className="p-3 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
+                        >
+                          {/* Variant Image Preview & Upload */}
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            <div className="w-16 h-16 rounded-xl bg-black border border-neutral-700 overflow-hidden flex items-center justify-center shrink-0">
+                              <img
+                                src={variant.imageUrl || '/logo-black-vape.jpeg'}
+                                alt={variant.colorName}
+                                className="w-full h-full object-contain p-1"
+                              />
+                            </div>
+                            <label className="py-2 px-3 rounded-xl bg-violet-950/60 hover:bg-violet-900/70 border border-violet-500/40 text-violet-200 text-[11px] font-bold cursor-pointer flex items-center gap-1.5 transition-all">
+                              <Upload className="w-3.5 h-3.5 text-violet-400" />
+                              <span>
+                                {uploadingVariantId === variant.id
+                                  ? 'Comprimiendo...'
+                                  : 'Subir Foto'}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/avif,image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) handleVariantImageFileSelect(variant.id, f);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                          </div>
+
+                          {/* Color Name, Hex Picker, Stock & Image URL */}
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-400 mb-0.5">
+                                Color #{idx + 1}
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={variant.colorHex || '#9333ea'}
+                                  onChange={(e) =>
+                                    setFormVariants((prev) =>
+                                      prev.map((v) =>
+                                        v.id === variant.id ? { ...v, colorHex: e.target.value } : v
+                                      )
+                                    )
+                                  }
+                                  className="w-8 h-8 rounded-lg bg-neutral-950 border border-neutral-700 cursor-pointer shrink-0"
+                                  title="Elegir tono de color"
+                                />
+                                <input
+                                  type="text"
+                                  required
+                                  value={variant.colorName}
+                                  onChange={(e) =>
+                                    setFormVariants((prev) =>
+                                      prev.map((v) =>
+                                        v.id === variant.id ? { ...v, colorName: e.target.value } : v
+                                      )
+                                    )
+                                  }
+                                  placeholder="Ej: Rojo, Verde..."
+                                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-1.5 px-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-400 mb-0.5">
+                                Stock de este Color
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                required
+                                value={variant.stockUnits}
+                                onChange={(e) =>
+                                  setFormVariants((prev) =>
+                                    prev.map((v) =>
+                                      v.id === variant.id
+                                        ? { ...v, stockUnits: Math.max(0, Number(e.target.value)) }
+                                        : v
+                                    )
+                                  )
+                                }
+                                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-1.5 px-2.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
+                              />
+                            </div>
+
+                            <div className="flex items-end gap-1.5">
+                              <div className="flex-1">
+                                <label className="block text-[10px] font-bold text-neutral-400 mb-0.5">
+                                  O URL de foto
+                                </label>
+                                <input
+                                  type="text"
+                                  value={
+                                    variant.imageUrl.startsWith('data:image') ? '' : variant.imageUrl
+                                  }
+                                  onChange={(e) =>
+                                    setFormVariants((prev) =>
+                                      prev.map((v) =>
+                                        v.id === variant.id ? { ...v, imageUrl: e.target.value } : v
+                                      )
+                                    )
+                                  }
+                                  placeholder="https://..."
+                                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg py-1.5 px-2 text-[11px] text-neutral-300 focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+                              {formVariants.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setFormVariants((prev) => prev.filter((v) => v.id !== variant.id))
+                                  }
+                                  className="p-2 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 cursor-pointer"
+                                  title="Quitar este color"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Categoría
+                      </label>
+                      <select
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
+                      >
+                        <option value="Frutales">Frutales</option>
+                        <option value="Mentolados">Mentolados</option>
+                        <option value="Postres">Postres</option>
+                        <option value="Tabacos">Tabacos</option>
+                        <option value="Bebidas">Bebidas</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Nicotina (mg)
+                      </label>
+                      <select
+                        value={formNicotine}
+                        onChange={(e) => setFormNicotine(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
+                      >
+                        <option value={0}>0 mg (Sin nicotina)</option>
+                        <option value={3}>3 mg (Freebase suave)</option>
+                        <option value={6}>6 mg (Freebase medio)</option>
+                        <option value={20}>20 mg (Salt suave)</option>
+                        <option value={35}>35 mg (Salt medio)</option>
+                        <option value={50}>50 mg (Salt fuerte)</option>
+                        <option value={55}>55 mg (Salt fuerte+)</option>
+                        <option value={70}>70 mg (Salt extra fuerte)</option>
+                        <option value={100}>100 mg (Salt extremo)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Stock Inicial (Porciones) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        value={formStock}
+                        onChange={(e) => setFormStock(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Precio de Costo (DOP por porción) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        value={formCostPrice}
+                        onChange={(e) => setFormCostPrice(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Editable Public Prices */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Precio Tanque Lleno (DOP) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={formPriceFullTank}
+                        onChange={(e) => setFormPriceFullTank(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-300 mb-1">
+                        Precio Medio Tanque (DOP) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={formPriceHalfTank}
+                        onChange={(e) => setFormPriceHalfTank(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-sm text-cyan-400 font-bold focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Photo upload from Desktop/Device, presets, or custom URL */}
+                  <div className="space-y-2.5">
+                    <label className="block text-xs font-bold text-neutral-300">
+                      Foto del Líquido (Sube desde tu Escritorio con compresión inteligente o elige del catálogo)
+                    </label>
+
+                    {/* Desktop Upload & Live Preview Box */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3 rounded-2xl bg-neutral-950 border border-neutral-800">
+                      <div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 shrink-0 flex items-center justify-center mx-auto sm:mx-0">
+                        {formImageUrl ? (
+                          <img
+                            src={formImageUrl}
+                            alt="Vista previa"
+                            className="w-full h-full object-contain p-1"
+                          />
+                        ) : (
+                          <ImageIcon className="w-7 h-7 text-neutral-600" />
+                        )}
+                      </div>
+
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const droppedFile = e.dataTransfer?.files?.[0];
+                          if (droppedFile) handleImageFileSelect(droppedFile);
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 p-3 rounded-xl border-2 border-dashed border-violet-500/40 hover:border-violet-400 bg-violet-950/15 hover:bg-violet-950/30 transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-1"
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/avif,image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageFileSelect(file);
+                            e.target.value = '';
+                          }}
+                          className="hidden"
+                        />
+                        <div className="flex items-center gap-1.5 text-violet-300 font-bold text-xs">
+                          <Upload className="w-4 h-4 text-violet-400" />
+                          <span>
+                            {isUploadingImage
+                              ? 'Comprimiendo foto para ahorrar memoria...'
+                              : 'Subir imagen desde el Escritorio / Celular'}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-neutral-400">
+                          {uploadedFileName
+                            ? `✓ Archivo cargado: ${uploadedFileName}`
+                            : 'Haz clic aquí o arrastra una foto (compresión automática WebP)'}
+                        </span>
+                        {compressionSummary && (
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg mt-0.5">
+                            ⚡ {compressionSummary}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {imageUploadError && (
+                      <p className="text-[11px] text-red-400 font-semibold">{imageUploadError}</p>
+                    )}
+
+                    {/* Preset Thumbnails */}
+                    <div>
+                      <span className="text-[10px] font-semibold text-neutral-400 block mb-1.5">
+                        O selecciona una foto del catálogo base:
+                      </span>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2">
+                        {PRESET_IMAGES.map((img, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setFormImageUrl(img.url);
+                              setUploadedFileName(null);
+                              setImageUploadError(null);
+                            }}
+                            className={`h-14 rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-neutral-950 p-1 flex items-center justify-center ${
+                              formImageUrl === img.url
+                                ? 'border-violet-500 scale-105 shadow'
+                                : 'border-neutral-800 opacity-60 hover:opacity-100'
+                            }`}
+                            title={img.name}
+                          >
+                            <img src={img.url} alt={img.name} className="w-full h-full object-contain" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom URL fallback */}
+                    <input
+                      type="text"
+                      placeholder="O pega aquí una URL de imagen externa (https://...)"
+                      value={formImageUrl.startsWith('data:image') ? '' : formImageUrl}
+                      onChange={(e) => {
+                        setFormImageUrl(e.target.value);
+                        setUploadedFileName(null);
+                      }}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-neutral-300 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-neutral-300 mb-1">
-                  Descripción del Sabor (Opcional)
+                  {formProductType === 'vape'
+                    ? 'Descripción del Equipo Vape (Opcional)'
+                    : 'Descripción del Sabor (Opcional)'}
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Notas de sabor, frescura, dulzor..."
+                  placeholder={
+                    formProductType === 'vape'
+                      ? 'Detalles del equipo: capacidad del cartucho, batería USB-C, malla mesh...'
+                      : 'Notas de sabor, frescura, dulzor...'
+                  }
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-sm text-white focus:outline-none focus:border-violet-500"
@@ -1518,10 +2184,16 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 px-5 bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-violet-600/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className={`flex-1 py-3 px-5 text-white font-bold text-xs rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    formProductType === 'vape'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-600/30'
+                      : 'bg-violet-600 hover:bg-violet-500 shadow-violet-600/30'
+                  }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Guardar Líquido</span>
+                  <span>
+                    {formProductType === 'vape' ? 'Guardar Equipo Vape' : 'Guardar Líquido'}
+                  </span>
                 </button>
               </div>
             </form>

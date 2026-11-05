@@ -446,6 +446,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         portion: it.portion,
         unitPrice: it.unitPrice,
         quantity: it.quantity,
+        productType: it.productType,
+        variantColor: it.variantColor,
       })),
       subtotalLiquid,
       deliveryFee,
@@ -460,7 +462,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     const targetPhone = store.whatsapp || store.phone || '8092104901';
     const waUrl = generateWhatsAppLink(targetPhone, waMsg);
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    const link = document.createElement('a');
+    link.href = waUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -755,7 +763,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 }}
                 isDraggableTarget={true}
                 targetLabel="Entrega BLACK VAPE"
-                heightClass="h-56 sm:h-64"
+                heightClass="h-64 sm:h-72"
                 flyToSelectedOnChange={true}
                 accuracyRadiusMeters={accuracyMeters || undefined}
               />
@@ -1072,7 +1080,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   <span className="text-neutral-200">
                     <strong className="text-emerald-400">{it.quantity}x</strong> {it.productName}{' '}
                     <span className="text-neutral-500 font-semibold">
-                      ({it.portion === 'tanque_lleno' ? `Tanque Lleno • $${it.unitPrice}` : `Mitad de Tanque • $${it.unitPrice}`})
+                      {it.productType === 'vape'
+                        ? `(💨 Equipo Vape${it.variantColor ? ` • Color: ${it.variantColor}` : ''} • $${it.unitPrice})`
+                        : `(${it.portion === 'tanque_lleno' ? `Tanque Lleno • $${it.unitPrice}` : `Mitad de Tanque • $${it.unitPrice}`})`}
                     </span>
                   </span>
                   <span className="font-bold text-white">${it.unitPrice * it.quantity} DOP</span>

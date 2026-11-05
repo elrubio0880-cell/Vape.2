@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { Product, Order, OrderItem, StoreConfig, OrderStatus, Coordinates, UserAccount } from '../types';
+import { Product, Order, OrderItem, StoreConfig, OrderStatus, Coordinates, UserAccount, ProductType, VapeVariant } from '../types';
 import {
   getStoredOrders,
   saveOrders,
@@ -23,21 +23,81 @@ import {
   isUuid,
 } from './supabasePoints';
 
+const VAPE_META_PREFIX = '<!--VAPE_META:';
+const VAPE_META_SUFFIX = '-->';
+
+export function encodeProductDescription(product: Product): string {
+  const rawDesc = (product.description || '').replace(/<!--VAPE_META:[\s\S]*?-->/g, '').trim();
+  if (product.productType === 'vape' || (product.variants && product.variants.length > 0)) {
+    const metaPayload = JSON.stringify({
+      productType: product.productType || 'vape',
+      variants: product.variants || [],
+    });
+    return `${rawDesc}${rawDesc ? ' ' : ''}${VAPE_META_PREFIX}${metaPayload}${VAPE_META_SUFFIX}`;
+  }
+  return rawDesc;
+}
+
+export function decodeProductDescription(rawDesc?: string): {
+  cleanDescription: string;
+  productType?: ProductType;
+  variants?: VapeVariant[];
+} {
+  if (!rawDesc) return { cleanDescription: '' };
+  const startIdx = rawDesc.indexOf(VAPE_META_PREFIX);
+  if (startIdx === -1) {
+    return { cleanDescription: rawDesc };
+  }
+  const endIdx = rawDesc.indexOf(VAPE_META_SUFFIX, startIdx);
+  if (endIdx === -1) {
+    return { cleanDescription: rawDesc };
+  }
+  const cleanDescription = (
+    rawDesc.slice(0, startIdx) + rawDesc.slice(endIdx + VAPE_META_SUFFIX.length)
+  ).trim();
+  const jsonStr = rawDesc.slice(startIdx + VAPE_META_PREFIX.length, endIdx);
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return {
+      cleanDescription,
+      productType: parsed.productType === 'vape' ? 'vape' : 'liquido',
+      variants: Array.isArray(parsed.variants) ? parsed.variants : undefined,
+    };
+  } catch {
+    return { cleanDescription };
+  }
+}
+
 /**
  * Normalizes DB product row to client Product model
  */
 export function mapDbProductToClient(row: any): Product {
+  const decoded = decodeProductDescription(row.description || '');
+  const isVapeCategory =
+    decoded.productType === 'vape' ||
+    row.product_type === 'vape' ||
+    (typeof row.flavor_category === 'string' &&
+      row.flavor_category.toLowerCase().includes('vape'));
+  const variants: VapeVariant[] | undefined =
+    decoded.variants || (Array.isArray(row.variants) ? row.variants : undefined);
+  const computedStock =
+    isVapeCategory && variants && variants.length > 0
+      ? variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
+      : Number(row.stock_units || 0);
+
   return {
     id: row.id,
     name: row.name,
+    productType: isVapeCategory ? 'vape' : 'liquido',
     flavorCategory: row.flavor_category,
     nicotineMg: Number(row.nicotine_mg || 0),
     imageUrl: row.image_url,
-    stockUnits: Number(row.stock_units || 0),
+    stockUnits: computedStock,
     costPrice: Number(row.cost_price || 0),
     priceFullTank: Number(row.price_full_tank || 100),
-    priceHalfTank: Number(row.price_half_tank || 50),
-    description: row.description || '',
+    priceHalfTank: Number(row.price_half_tank || row.price_full_tank || 50),
+    description: decoded.cleanDescription,
+    variants,
     isActive: Boolean(row.is_active),
   };
 }
@@ -313,8 +373,12 @@ export interface CreateOrderParams {
   locationAccuracyMeters?: number;
   items: Array<{
     productId: string;
+    productType?: ProductType;
     portion: 'tanque_lleno' | 'mitad';
     quantity: number;
+    variantId?: string;
+    variantColor?: string;
+    variantImage?: string;
   }>;
 }
 
@@ -409,29 +473,57 @@ export async function createOrderOnServer(
   for (const [productId, totalQty] of requestedQtyByProduct.entries()) {
     const prod = currentProducts.find((p) => p.id === productId);
     if (!prod) {
-      return { success: false, error: `Líquido con ID ${productId} no encontrado.` };
+      return { success: false, error: `Producto con ID ${productId} no encontrado.` };
     }
     if (prod.stockUnits < totalQty) {
       return {
         success: false,
-        error: `Stock insuficiente para ${prod.name}. Solicitaste ${totalQty} porciones y solo quedan ${prod.stockUnits}.`,
+        error: `Stock insuficiente para ${prod.name}. Solicitaste ${totalQty} y solo quedan ${prod.stockUnits} disponibles.`,
       };
     }
   }
 
   for (const it of params.items) {
     const prod = currentProducts.find((p) => p.id === it.productId)!;
-    const unitPrice = it.portion === 'tanque_lleno' ? prod.priceFullTank : prod.priceHalfTank;
+    const isVape = prod.productType === 'vape' || it.productType === 'vape';
+
+    // Validate per-color variant stock if applicable
+    if (isVape && prod.variants && prod.variants.length > 0 && (it.variantId || it.variantColor)) {
+      const targetVar = prod.variants.find(
+        (v) => v.id === it.variantId || v.colorName === it.variantColor
+      );
+      if (targetVar && targetVar.stockUnits < it.quantity) {
+        return {
+          success: false,
+          error: `Stock insuficiente para ${prod.name} (Color: ${targetVar.colorName}). Quedan ${targetVar.stockUnits} disponibles.`,
+        };
+      }
+    }
+
+    const unitPrice = isVape
+      ? prod.priceFullTank
+      : it.portion === 'tanque_lleno'
+      ? prod.priceFullTank
+      : prod.priceHalfTank;
     subtotalLiquid += unitPrice * it.quantity;
     liquidCostTotal += prod.costPrice * it.quantity;
 
+    const displayName =
+      isVape && it.variantColor && !prod.name.includes(`(${it.variantColor})`)
+        ? `${prod.name} (${it.variantColor})`
+        : prod.name;
+
     orderItems.push({
       productId: prod.id,
-      productName: prod.name,
-      portion: it.portion,
+      productName: displayName,
+      productType: isVape ? 'vape' : 'liquido',
+      portion: isVape ? 'tanque_lleno' : it.portion,
       unitPrice,
       costPrice: prod.costPrice,
       quantity: it.quantity,
+      variantId: it.variantId,
+      variantColor: it.variantColor,
+      variantImage: it.variantImage,
     });
   }
 
@@ -513,6 +605,7 @@ export async function createOrderOnServer(
         if (orderData) {
           const mappedOrder: Order = {
             ...mapDbOrderToClient(orderData),
+            items: finalOrder.items,
             customerId: finalOrder.customerId || orderData.customer_id,
             orderType: finalOrder.orderType,
             redemptionId: finalOrder.redemptionId,
@@ -592,18 +685,50 @@ export async function markOrderDeliveredOnServer(
   if (!targetOrder) return { success: false, error: 'Pedido no encontrado.' };
   if (targetOrder.status === 'entregado') return { success: true };
 
-  // Decrement stock summing all portions for the same productId
+  // Decrement stock summing all portions for the same productId (and per-variant stock for Vapes)
   const updatedProducts = products.map((prod) => {
-    const soldQuantity = targetOrder.items
-      .filter((it) => it.productId === prod.id)
-      .reduce((sum, it) => sum + it.quantity, 0);
-    if (soldQuantity > 0) {
-      return {
+    const matchingItems = targetOrder.items.filter((it) => it.productId === prod.id);
+    const soldQuantity = matchingItems.reduce((sum, it) => sum + it.quantity, 0);
+    if (soldQuantity <= 0) return prod;
+
+    if (prod.productType === 'vape' && prod.variants && prod.variants.length > 0) {
+      const updatedVariants = prod.variants.map((v) => ({ ...v }));
+      for (const it of matchingItems) {
+        const targetIdx = updatedVariants.findIndex(
+          (v) =>
+            (it.variantId && v.id === it.variantId) ||
+            (it.variantColor && v.colorName.toLowerCase() === it.variantColor.toLowerCase()) ||
+            it.productName.toLowerCase().includes(`(${v.colorName.toLowerCase()})`)
+        );
+        if (targetIdx >= 0) {
+          updatedVariants[targetIdx].stockUnits = Math.max(
+            0,
+            updatedVariants[targetIdx].stockUnits - it.quantity
+          );
+        } else {
+          const firstWithStock = updatedVariants.findIndex((v) => v.stockUnits > 0);
+          if (firstWithStock >= 0) {
+            updatedVariants[firstWithStock].stockUnits = Math.max(
+              0,
+              updatedVariants[firstWithStock].stockUnits - it.quantity
+            );
+          }
+        }
+      }
+      const newTotalStock = updatedVariants.reduce((sum, v) => sum + v.stockUnits, 0);
+      const updatedVapeProd: Product = {
         ...prod,
-        stockUnits: Math.max(0, prod.stockUnits - soldQuantity),
+        variants: updatedVariants,
+        stockUnits: newTotalStock,
       };
+      saveProductToServer(updatedVapeProd).catch(() => {});
+      return updatedVapeProd;
     }
-    return prod;
+
+    return {
+      ...prod,
+      stockUnits: Math.max(0, prod.stockUnits - soldQuantity),
+    };
   });
 
   targetOrder.status = 'entregado';
@@ -777,17 +902,23 @@ export async function clearTestOrdersOnServer(
 export async function saveProductToServer(product: Product): Promise<{ success: boolean; error?: string }> {
   if (isSupabaseConfigured()) {
     try {
+      const encodedDescription = encodeProductDescription(product);
+      const totalStock =
+        product.productType === 'vape' && product.variants && product.variants.length > 0
+          ? product.variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
+          : product.stockUnits;
+
       const { error } = await supabase.from('products').upsert({
         id: product.id,
         name: product.name,
         flavor_category: product.flavorCategory,
         nicotine_mg: product.nicotineMg,
         image_url: product.imageUrl,
-        stock_units: product.stockUnits,
+        stock_units: totalStock,
         cost_price: product.costPrice,
         price_full_tank: product.priceFullTank,
         price_half_tank: product.priceHalfTank,
-        description: product.description,
+        description: encodedDescription,
         is_active: product.isActive,
         updated_at: new Date().toISOString(),
       });

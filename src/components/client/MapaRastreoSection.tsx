@@ -190,7 +190,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
                   Estás a <span className="text-cyan-300 font-black">{userDistanceKm.toFixed(2)} km</span> de BLACK VAPE (Colmado Noadia)
                 </strong>
                 <span className="text-xs text-neutral-400 block mt-0.5">
-                  Tarifa estimada de viaje: <span className="text-emerald-400 font-black">${userDeliveryCalc.fee} DOP</span> ({userDeliveryCalc.zone.label})
+                  Tarifa estimada de viaje: <span className="text-emerald-400 font-black">${userDeliveryCalc.fee} DOP</span> • Zona {userDeliveryCalc.tier} (Hasta {userDeliveryCalc.zone.maxKm} km)
                 </span>
               </div>
             </div>
@@ -212,7 +212,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
             store={store}
             selectedLocation={userLocation || undefined}
             targetLabel="Tu Casa / Entrega"
-            heightClass="h-80 sm:h-96"
+            heightClass="h-[380px] sm:h-[460px]"
             showDeliveryZones={true}
             routeWaypoints={userLocation ? [store.location, userLocation] : []}
             isDraggableTarget={true}

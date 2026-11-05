@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, PortionType, StoreConfig, Coordinates, Order, OrderStatus } from '../../types';
+import { Product, PortionType, StoreConfig, Coordinates, Order, OrderStatus, VapeVariant, OrderItem } from '../../types';
 import {
   X,
   MessageCircle,
@@ -14,14 +14,17 @@ import {
   Phone,
   User,
   ExternalLink,
+  Palette,
 } from 'lucide-react';
 import { calculateDistanceKm, calculateDeliveryFee } from '../../utils/routing';
-import { SANTO_DOMINGO_SECTORS, reverseGeocode, findNearestSector, getHighAccuracyGPS } from '../../utils/geocoding';
+import { SANTO_DOMINGO_SECTORS, reverseGeocode, getHighAccuracyGPS } from '../../utils/geocoding';
 import { buildSingleProductWhatsAppMessage, generateWhatsAppLink } from '../../utils/whatsapp';
 import { playNotificationSound, getStoredClientContact, setStoredClientContact, getStoredUserLocation, saveStoredUserLocation } from '../../utils/storage';
 
 interface QuickWhatsAppOrderModalProps {
   product: Product;
+  initialVariant?: VapeVariant;
+  availableLiquids?: Product[];
   store: StoreConfig;
   onClose: () => void;
   onCreateOrder: (order: Order) => void;
@@ -29,12 +32,24 @@ interface QuickWhatsAppOrderModalProps {
 
 export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = ({
   product,
+  initialVariant,
+  availableLiquids = [],
   store,
   onClose,
   onCreateOrder,
 }) => {
+  const isVape = product.productType === 'vape';
   const [portion, setPortion] = useState<PortionType>('tanque_lleno');
   const [quantity, setQuantity] = useState<number>(1);
+  const [selectedVariant, setSelectedVariant] = useState<VapeVariant | undefined>(() => {
+    if (!isVape || !product.variants || product.variants.length === 0) return undefined;
+    if (initialVariant) return initialVariant;
+    return product.variants.find((v) => v.stockUnits > 0) || product.variants[0];
+  });
+
+  // Optional immediate liquid cross-sell when ordering a Vape via WhatsApp
+  const [selectedAddonLiquidId, setSelectedAddonLiquidId] = useState<string>('');
+  const [selectedAddonPortion, setSelectedAddonPortion] = useState<PortionType>('tanque_lleno');
 
   // Client info
   const initialContact = getStoredClientContact();
@@ -54,8 +69,22 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
   const [detectedAddress, setDetectedAddress] = useState<string>('Loma de Cabrera, Dajabón');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const unitPrice = portion === 'tanque_lleno' ? product.priceFullTank : product.priceHalfTank;
-  const subtotalLiquid = unitPrice * quantity;
+  const unitPrice = isVape
+    ? product.priceFullTank
+    : portion === 'tanque_lleno'
+    ? product.priceFullTank
+    : product.priceHalfTank;
+  const maxStock =
+    isVape && selectedVariant ? selectedVariant.stockUnits : product.stockUnits;
+
+  const addonLiquidProduct = availableLiquids.find((l) => l.id === selectedAddonLiquidId);
+  const addonLiquidPrice = addonLiquidProduct
+    ? selectedAddonPortion === 'tanque_lleno'
+      ? addonLiquidProduct.priceFullTank || 100
+      : addonLiquidProduct.priceHalfTank || 50
+    : 0;
+
+  const subtotalLiquid = unitPrice * quantity + addonLiquidPrice;
   const distanceKm = calculateDistanceKm(store.location, location);
   const deliveryCalc = calculateDeliveryFee(distanceKm);
   const deliveryFee = deliveryCalc.fee;
@@ -131,6 +160,39 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
   // Build order object
   const createSystemOrder = (): Order => {
     const orderId = `ORD-${Math.floor(100 + Math.random() * 900)}`;
+    const orderItems: OrderItem[] = [
+      {
+        productId: product.id,
+        productName:
+          isVape && selectedVariant
+            ? `${product.name} (${selectedVariant.colorName})`
+            : product.name,
+        productType: isVape ? 'vape' : 'liquido',
+        portion: isVape ? 'tanque_lleno' : portion,
+        unitPrice,
+        costPrice: product.costPrice,
+        quantity,
+        variantId: selectedVariant?.id,
+        variantColor: selectedVariant?.colorName,
+        variantImage: selectedVariant?.imageUrl || product.imageUrl,
+      },
+    ];
+
+    if (isVape && addonLiquidProduct) {
+      orderItems.push({
+        productId: addonLiquidProduct.id,
+        productName: addonLiquidProduct.name,
+        productType: 'liquido',
+        portion: selectedAddonPortion,
+        unitPrice: addonLiquidPrice,
+        costPrice: addonLiquidProduct.costPrice,
+        quantity: 1,
+      });
+    }
+
+    const totalCost =
+      product.costPrice * quantity + (addonLiquidProduct ? addonLiquidProduct.costPrice : 0);
+
     const newOrder: Order = {
       id: orderId,
       createdAt: new Date().toISOString(),
@@ -140,18 +202,9 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
         ? `${detectedAddress} (${deliveryAddressNote.trim()})`
         : detectedAddress,
       location,
-      items: [
-        {
-          productId: product.id,
-          productName: product.name,
-          portion,
-          unitPrice,
-          costPrice: product.costPrice,
-          quantity,
-        },
-      ],
+      items: orderItems,
       subtotalLiquid,
-      liquidCostTotal: product.costPrice * quantity,
+      liquidCostTotal: totalCost,
       deliveryFee,
       calculatedDeliveryFee: deliveryFee,
       proposedDeliveryFee: deliveryFee,
@@ -165,7 +218,9 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
         {
           status: 'pendiente_cotizacion' as OrderStatus,
           timestamp: new Date().toISOString(),
-          note: `Pedido solicitado vía WhatsApp directo para ${product.name}`,
+          note: `Pedido solicitado vía WhatsApp directo para ${product.name}${
+            selectedVariant ? ` (${selectedVariant.colorName})` : ''
+          }`,
         },
       ],
     };
@@ -200,12 +255,17 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
     // 2. Generate WhatsApp message with product photo, Google Maps link, and full details
     const msg = buildSingleProductWhatsAppMessage({
       productName: product.name,
+      productType: isVape ? 'vape' : 'liquido',
+      variantColor: selectedVariant?.colorName,
       flavorCategory: product.flavorCategory,
       nicotineMg: product.nicotineMg,
-      imageUrl: product.imageUrl,
-      portion,
+      imageUrl: selectedVariant?.imageUrl || product.imageUrl,
+      portion: isVape ? 'tanque_lleno' : portion,
       quantity,
       unitPrice,
+      extraLiquidName: addonLiquidProduct?.name,
+      extraLiquidPortion: addonLiquidProduct ? selectedAddonPortion : undefined,
+      extraLiquidPrice: addonLiquidProduct ? addonLiquidPrice : undefined,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
       deliveryAddress: deliveryAddressNote.trim()
@@ -220,12 +280,19 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
     const targetPhone = store.whatsapp || store.phone || '8092104901';
     const waUrl = generateWhatsAppLink(targetPhone, msg);
 
-    // Open WhatsApp
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    // Open WhatsApp via anchor element
+    const a = document.createElement('a');
+    a.href = waUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     onClose();
   };
 
   const lomaSectors = SANTO_DOMINGO_SECTORS.slice(0, 8);
+  const displayImage = selectedVariant?.imageUrl || product.imageUrl;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto font-urban">
@@ -244,7 +311,7 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                 PEDIDO RÁPIDO POR WHATSAPP
               </span>
               <h3 className="text-base sm:text-lg font-black text-white">
-                Recarga Express en 1 Clic
+                {isVape ? 'Pedir Equipo Vape Express' : 'Recarga Express en 1 Clic'}
               </h3>
             </div>
           </div>
@@ -261,7 +328,7 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
         <div className="mt-4 p-3.5 rounded-2xl bg-black/70 border border-purple-900/50 flex items-center gap-3.5">
           <div className="w-20 h-20 rounded-xl overflow-hidden bg-black shrink-0 border border-purple-800/60 p-1 flex items-center justify-center">
             <img
-              src={product.imageUrl}
+              src={displayImage}
               alt={product.name}
               className="w-full h-full object-contain"
             />
@@ -269,11 +336,18 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-1">
               <span className="px-2 py-0.5 rounded text-[9px] font-tag bg-purple-900/60 text-purple-300 border border-purple-700/50">
-                {product.flavorCategory}
+                {isVape ? '💨 EQUIPO VAPE' : product.flavorCategory}
               </span>
-              <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                {product.nicotineMg}mg
-              </span>
+              {!isVape && (
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                  {product.nicotineMg}mg
+                </span>
+              )}
+              {isVape && selectedVariant && (
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                  Color: {selectedVariant.colorName}
+                </span>
+              )}
             </div>
             <h4 className="font-black text-sm text-white truncate">{product.name}</h4>
             <p className="text-[11px] text-neutral-400 truncate mt-0.5">
@@ -283,56 +357,171 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
         </div>
 
         <form onSubmit={handleSendWhatsApp} className="mt-4 space-y-4">
-          {/* Portion Selection */}
-          <div>
-            <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-              Selecciona Tamaño de Recarga para tu Tanque:
-            </label>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => setPortion('tanque_lleno')}
-                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                  portion === 'tanque_lleno'
-                    ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-lg shadow-emerald-950'
-                    : 'bg-black/50 border-neutral-800 text-neutral-400 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold">Tanque Lleno</span>
-                  <Droplet className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+          {isVape ? (
+            <>
+              {/* Color Selector for Vape */}
+              {product.variants && product.variants.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-neutral-300 mb-1.5 flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Elige el Color del Vape:</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {product.variants.map((v) => {
+                      const isSelected = selectedVariant?.id === v.id;
+                      const out = v.stockUnits <= 0;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          disabled={out}
+                          onClick={() => {
+                            setSelectedVariant(v);
+                            setQuantity(1);
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            out
+                              ? 'opacity-40 cursor-not-allowed bg-neutral-950 border-neutral-800 text-neutral-500'
+                              : isSelected
+                              ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-md shadow-cyan-950'
+                              : 'bg-black/60 border-neutral-800 text-neutral-300 hover:text-white'
+                          }`}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full border border-white/40"
+                            style={{ backgroundColor: v.colorHex || '#9333ea' }}
+                          />
+                          <span>{v.colorName}</span>
+                          <span className="text-[10px] text-neutral-400">
+                            ({out ? 'Agotado' : `${v.stockUnits} disp.`})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="text-sm font-black text-emerald-400 mt-1">
-                  ${product.priceFullTank || 100} DOP <span className="text-[10px] font-normal text-neutral-400">(100%)</span>
-                </div>
-              </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setPortion('mitad')}
-                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                  portion === 'mitad'
-                    ? 'bg-cyan-950/60 border-cyan-400 text-white shadow-lg shadow-cyan-950'
-                    : 'bg-black/50 border-neutral-800 text-neutral-400 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold">Mitad Tanque</span>
-                  <Droplet className="w-3.5 h-3.5 text-cyan-400" />
+              {/* Immediate Liquid Refill Cross-Sell inside WhatsApp Modal */}
+              {availableLiquids.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-[#120c24] to-cyan-950/50 border border-cyan-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
+                      <Droplet className="w-3.5 h-3.5 fill-cyan-400 text-cyan-400" />
+                      <span>¿Le echamos líquido de una vez a tu nuevo Vape?</span>
+                    </span>
+                    {selectedAddonLiquidId && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAddonLiquidId('')}
+                        className="text-[10px] text-neutral-400 hover:text-white underline cursor-pointer"
+                      >
+                        Quitar líquido
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={selectedAddonLiquidId}
+                    onChange={(e) => setSelectedAddonLiquidId(e.target.value)}
+                    className="w-full bg-black/80 border border-purple-700/60 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="">No, solo quiero el equipo Vape por ahora</option>
+                    {availableLiquids
+                      .filter((l) => l.stockUnits > 0)
+                      .map((l) => (
+                        <option key={l.id} value={l.id}>
+                          💧 {l.name} ({l.nicotineMg}mg)
+                        </option>
+                      ))}
+                  </select>
+
+                  {addonLiquidProduct && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAddonPortion('tanque_lleno')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer ${
+                          selectedAddonPortion === 'tanque_lleno'
+                            ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300'
+                            : 'bg-black/60 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        <span>Tanque Lleno</span>
+                        <span className="font-black">+${addonLiquidProduct.priceFullTank || 100}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAddonPortion('mitad')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer ${
+                          selectedAddonPortion === 'mitad'
+                            ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300'
+                            : 'bg-black/60 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
+                        <span>Mitad Tanque</span>
+                        <span className="font-black">+${addonLiquidProduct.priceHalfTank || 50}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="text-sm font-black text-cyan-400 mt-1">
-                  ${product.priceHalfTank || 50} DOP <span className="text-[10px] font-normal text-neutral-400">(50%)</span>
-                </div>
-              </button>
+              )}
+            </>
+          ) : (
+            /* Portion Selection for Liquids */
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                Selecciona Tamaño de Recarga para tu Tanque:
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPortion('tanque_lleno')}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    portion === 'tanque_lleno'
+                      ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-lg shadow-emerald-950'
+                      : 'bg-black/50 border-neutral-800 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold">Tanque Lleno</span>
+                    <Droplet className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                  </div>
+                  <div className="text-sm font-black text-emerald-400 mt-1">
+                    ${product.priceFullTank || 100} DOP <span className="text-[10px] font-normal text-neutral-400">(100%)</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPortion('mitad')}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    portion === 'mitad'
+                      ? 'bg-cyan-950/60 border-cyan-400 text-white shadow-lg shadow-cyan-950'
+                      : 'bg-black/50 border-neutral-800 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold">Mitad Tanque</span>
+                    <Droplet className="w-3.5 h-3.5 text-cyan-400" />
+                  </div>
+                  <div className="text-sm font-black text-cyan-400 mt-1">
+                    ${product.priceHalfTank || 50} DOP <span className="text-[10px] font-normal text-neutral-400">(50%)</span>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Quantity stepper */}
           <div className="flex items-center justify-between p-3 rounded-2xl bg-black/60 border border-neutral-800">
             <div>
-              <span className="text-xs font-bold text-white block">Cantidad de Tanques:</span>
+              <span className="text-xs font-bold text-white block">
+                {isVape ? 'Cantidad de Equipos Vape:' : 'Cantidad de Tanques:'}
+              </span>
               <span className="text-[11px] text-neutral-400">
-                ${unitPrice} DOP c/u = ${subtotalLiquid} DOP
+                ${unitPrice} DOP c/u
+                {addonLiquidProduct ? ` + Recarga $${addonLiquidPrice} DOP` : ''} = ${subtotalLiquid} DOP
               </span>
             </div>
             <div className="flex items-center gap-2 bg-[#120c22] border border-purple-800/60 rounded-xl p-1">
@@ -348,10 +537,10 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
               </span>
               <button
                 type="button"
-                disabled={quantity >= product.stockUnits}
-                onClick={() => setQuantity((q) => Math.min(product.stockUnits, q + 1))}
+                disabled={quantity >= maxStock}
+                onClick={() => setQuantity((q) => Math.min(maxStock, q + 1))}
                 className="w-8 h-8 flex items-center justify-center text-neutral-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-lg hover:bg-neutral-800 transition-colors font-black text-sm cursor-pointer"
-                title={quantity >= product.stockUnits ? `Máximo disponible: ${product.stockUnits}` : 'Aumentar cantidad'}
+                title={quantity >= maxStock ? `Máximo disponible: ${maxStock}` : 'Aumentar cantidad'}
               >
                 +
               </button>

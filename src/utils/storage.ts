@@ -118,6 +118,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-pop-strawberry-watermelon',
     name: 'Pop Iced Strawberry Watermelon',
+    productType: 'liquido',
     flavorCategory: 'Frutales',
     nicotineMg: 50,
     imageUrl: '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp',
@@ -126,6 +127,87 @@ export const INITIAL_PRODUCTS: Product[] = [
     priceFullTank: 100,
     priceHalfTank: 50,
     description: 'Recarga de tanque: Dúo veraniego de fresa madura y sandía jugosa con cristales de hielo.',
+    isActive: true,
+  },
+  {
+    id: 'prod-vape-puff-pro',
+    name: 'Vape Puff Recargable Street Pro',
+    productType: 'vape',
+    flavorCategory: 'Equipos Vape',
+    nicotineMg: 0,
+    imageUrl: '/logo-black-vape.jpeg',
+    stockUnits: 14,
+    costPrice: 350,
+    priceFullTank: 650,
+    priceHalfTank: 650,
+    description: 'Equipo Vape recargable de alto rendimiento con tanque rellenable malla mesh y puerto USB-C. ¡Elige tu color favorito y agrégale líquido al instante!',
+    variants: [
+      {
+        id: 'var-puff-rojo',
+        colorName: 'Rojo',
+        colorHex: '#ef4444',
+        imageUrl: '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp',
+        stockUnits: 4,
+      },
+      {
+        id: 'var-puff-verde',
+        colorName: 'Verde',
+        colorHex: '#10b981',
+        imageUrl: '/liquidos/mistiq-flava-melon-120ml-liquids-liquids-melca-distro-899_500x.webp',
+        stockUnits: 4,
+      },
+      {
+        id: 'var-puff-azul',
+        colorName: 'Azul',
+        colorHex: '#3b82f6',
+        imageUrl: '/liquidos/pop-iced-blueberry-lemonade-100ml-liquids-liquids-pop-vapors-melca-distro-958_500x.webp',
+        stockUnits: 3,
+      },
+      {
+        id: 'var-puff-morado',
+        colorName: 'Morado',
+        colorHex: '#9333ea',
+        imageUrl: '/liquidos/pop-iced-grape-100ml-liquids-liquids-pop-vapors-melca-distro-444_500x.webp',
+        stockUnits: 3,
+      },
+    ],
+    isActive: true,
+  },
+  {
+    id: 'prod-vape-pod-caliburn',
+    name: 'Vape Pod Recargable Black Edition',
+    productType: 'vape',
+    flavorCategory: 'Equipos Vape',
+    nicotineMg: 0,
+    imageUrl: '/logo-black-vape.jpeg',
+    stockUnits: 9,
+    costPrice: 450,
+    priceFullTank: 850,
+    priceHalfTank: 850,
+    description: 'Pod recargable compacto para sales y freebase con flujo de aire ajustable y cartucho transparente para recargas de $50 o $100 DOP.',
+    variants: [
+      {
+        id: 'var-pod-negro',
+        colorName: 'Negro',
+        colorHex: '#171717',
+        imageUrl: '/logo-black-vape.jpeg',
+        stockUnits: 4,
+      },
+      {
+        id: 'var-pod-dorado',
+        colorName: 'Dorado',
+        colorHex: '#eab308',
+        imageUrl: '/liquidos/pop-iced-mango-dragon-fruit-100ml-liquids-liquids-pop-vapors-melca-distro-892_500x.webp',
+        stockUnits: 3,
+      },
+      {
+        id: 'var-pod-rosa',
+        colorName: 'Rosa',
+        colorHex: '#ec4899',
+        imageUrl: '/liquidos/horny-flava-ice-mint-bubblegum-120ml-liquids-liquids-melca-distro-605_500x.webp',
+        stockUnits: 2,
+      },
+    ],
     isActive: true,
   },
 ];
@@ -279,13 +361,32 @@ export function getStoredProducts(): Product[] {
       return INITIAL_PRODUCTS;
     }
     const hasValidImages = parsed.some(
-      (p) => p.imageUrl?.startsWith('/liquidos/') || p.imageUrl?.startsWith('data:image') || p.imageUrl?.startsWith('http')
+      (p) =>
+        p.imageUrl?.startsWith('/liquidos/') ||
+        p.imageUrl?.startsWith('/logo-') ||
+        p.imageUrl?.startsWith('data:image') ||
+        p.imageUrl?.startsWith('http')
     );
     if (!hasValidImages) {
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
       return INITIAL_PRODUCTS;
     }
-    return parsed;
+
+    // Ensure initial Vape products are present for existing users unless deleted by admin
+    const deletedIds = new Set(getDeletedProductIds());
+    const existingIds = new Set(parsed.map((p) => p.id));
+    let updated = false;
+    const merged = [...parsed];
+    for (const initProd of INITIAL_PRODUCTS) {
+      if (initProd.productType === 'vape' && !existingIds.has(initProd.id) && !deletedIds.has(initProd.id)) {
+        merged.push(initProd);
+        updated = true;
+      }
+    }
+    if (updated) {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(merged));
+    }
+    return merged;
   } catch {
     return INITIAL_PRODUCTS;
   }

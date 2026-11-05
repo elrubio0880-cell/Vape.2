@@ -6,7 +6,7 @@ interface CartDrawerModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: OrderItem[];
-  onUpdateQuantity: (productId: string, portion: PortionType, delta: number) => void;
+  onUpdateQuantity: (productId: string, portion: PortionType, delta: number, variantId?: string) => void;
   onClearCart: () => void;
   onProceedToCheckout: () => void;
 }
@@ -34,9 +34,9 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
               <ShoppingBag className="w-5 h-5 text-cyan-300" />
             </div>
             <div>
-              <h3 className="font-black text-lg text-white font-urban">Tu Canasta de Recargas</h3>
+              <h3 className="font-black text-lg text-white font-urban">Tu Canasta Black Vape</h3>
               <p className="text-xs text-purple-300 font-tag">
-                {totalCount} {totalCount === 1 ? 'dosis de líquido' : 'dosis de líquidos'}
+                {totalCount} {totalCount === 1 ? 'producto seleccionado' : 'productos seleccionados'}
               </p>
             </div>
           </div>
@@ -56,8 +56,8 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
           {/* Service disclaimer note */}
           {items.length > 0 && (
             <div className="p-3.5 bg-gradient-to-r from-purple-950/60 to-cyan-950/60 border border-purple-500/40 rounded-2xl text-xs text-purple-200 leading-relaxed shadow">
-              <span className="font-tag text-cyan-300 block mb-0.5">MODALIDAD DE LLENADO DE TANQUE:</span>
-              El repartidor llega con los líquidos originales y te dispensa la porción exacta en tu vape al momento. No se entrega el pote entero.
+              <span className="font-tag text-cyan-300 block mb-0.5">ENTREGA & RECARGA EN SITIO:</span>
+              El repartidor te lleva tus equipos Vape nuevos y dispensa las porciones de líquido directamente en tu tanque al momento.
             </div>
           )}
 
@@ -66,53 +66,85 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
               <Wind className="w-12 h-12 mx-auto stroke-purple-600/50 animate-pulse" />
               <p className="text-purple-300 font-tag text-base">Tu canasta está vacía</p>
               <p className="text-xs text-neutral-400 max-w-xs mx-auto">
-                Selecciona tus sabores favoritos en la tienda para llenar tu tanque con humo denso.
+                Selecciona tus líquidos de recarga o equipos Vape en la tienda.
               </p>
             </div>
           ) : (
-            items.map((it) => (
-              <div
-                key={`${it.productId}-${it.portion}`}
-                className="p-3.5 rounded-2xl bg-black/60 border border-purple-900/50 hover:border-cyan-400/50 transition-colors flex items-center justify-between gap-3 shadow-md"
-              >
-                <div>
-                  <h4 className="font-black text-sm text-white font-urban">{it.productName}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[10px] font-tag uppercase px-2 py-0.5 rounded-md ${
-                      it.portion === 'tanque_lleno' 
-                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40' 
-                        : 'bg-cyan-950/80 text-cyan-400 border border-cyan-500/40'
-                    }`}>
-                      {it.portion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad Tanque'}
+            items.map((it) => {
+              const isVape = it.productType === 'vape';
+              return (
+                <div
+                  key={`${it.productId}-${it.portion}-${it.variantId || 'std'}`}
+                  className="p-3.5 rounded-2xl bg-black/60 border border-purple-900/50 hover:border-cyan-400/50 transition-colors flex items-center justify-between gap-3 shadow-md"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {it.variantImage && (
+                      <img
+                        src={it.variantImage}
+                        alt={it.productName}
+                        className="w-11 h-11 rounded-xl object-contain bg-black border border-cyan-500/40 p-1 shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <h4 className="font-black text-sm text-white font-urban truncate">
+                        {it.productName}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span
+                          className={`text-[10px] font-tag uppercase px-2 py-0.5 rounded-md ${
+                            isVape
+                              ? 'bg-cyan-950/90 text-cyan-300 border border-cyan-400/50'
+                              : it.portion === 'tanque_lleno'
+                              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40'
+                              : 'bg-cyan-950/80 text-cyan-400 border border-cyan-500/40'
+                          }`}
+                        >
+                          {isVape
+                            ? `💨 Equipo Vape${it.variantColor ? ` • Color: ${it.variantColor}` : ''}`
+                            : it.portion === 'tanque_lleno'
+                            ? '💧 Tanque Lleno'
+                            : '💧 Mitad Tanque'}
+                        </span>
+                        <span className="text-xs font-black text-white font-urban">
+                          ${it.unitPrice} DOP c/u
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quantity steppers */}
+                  <div className="flex items-center gap-2 bg-[#140e24] border border-purple-800/60 rounded-xl p-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onUpdateQuantity(it.productId, it.portion, -1, it.variantId)}
+                      className="w-7 h-7 flex items-center justify-center text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer font-black text-xs"
+                      aria-label="Restar uno"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span
+                      className={`text-xs font-black px-1 font-urban ${
+                        isVape
+                          ? 'text-cyan-300'
+                          : it.portion === 'tanque_lleno'
+                          ? 'text-emerald-400'
+                          : 'text-cyan-400'
+                      }`}
+                    >
+                      {it.quantity}
                     </span>
-                    <span className="text-xs font-black text-white font-urban">${it.unitPrice} DOP c/u</span>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateQuantity(it.productId, it.portion, 1, it.variantId)}
+                      className="w-7 h-7 flex items-center justify-center text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer font-black text-xs"
+                      aria-label="Sumar uno"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                {/* Quantity steppers */}
-                <div className="flex items-center gap-2 bg-[#140e24] border border-purple-800/60 rounded-xl p-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => onUpdateQuantity(it.productId, it.portion, -1)}
-                    className="w-7 h-7 flex items-center justify-center text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer font-black text-xs"
-                    aria-label="Restar uno"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className={`text-xs font-black px-1 font-urban ${it.portion === 'tanque_lleno' ? 'text-emerald-400' : 'text-cyan-400'}`}>
-                    {it.quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onUpdateQuantity(it.productId, it.portion, 1)}
-                    className="w-7 h-7 flex items-center justify-center text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer font-black text-xs"
-                    aria-label="Sumar uno"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -121,7 +153,7 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
           <div className="p-5 border-t border-purple-900/40 bg-black/60 space-y-4">
             <div className="space-y-1.5 text-xs text-neutral-300">
               <div className="flex justify-between items-center">
-                <span className="font-medium text-neutral-400">Subtotal Recargas:</span>
+                <span className="font-medium text-neutral-400">Subtotal Productos:</span>
                 <span className="font-black text-white text-base font-urban">${totalAmount} DOP</span>
               </div>
               <div className="flex justify-between items-center text-[11px] text-cyan-300 font-tag pt-1 border-t border-purple-900/40">

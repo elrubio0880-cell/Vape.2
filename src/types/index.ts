@@ -1,16 +1,28 @@
 export type PortionType = 'tanque_lleno' | 'mitad';
 
+export type ProductType = 'liquido' | 'vape';
+
+export interface VapeVariant {
+  id: string;
+  colorName: string; // e.g., 'Rojo', 'Verde', 'Azul', 'Negro', 'Morado'
+  colorHex?: string; // e.g., '#ef4444', '#10b981'
+  imageUrl: string;
+  stockUnits: number; // Independent stock for this color variant
+}
+
 export interface Product {
   id: string;
   name: string;
-  flavorCategory: string; // e.g., 'Frutales', 'Mentolados', 'Postres', 'Tabacos', 'Bebidas'
-  nicotineMg: number; // e.g. 0, 3, 6, 20, 35, 50
+  productType?: ProductType; // defaults to 'liquido' for backward compatibility
+  flavorCategory: string; // e.g., 'Frutales', 'Mentolados', 'Postres', 'Tabacos', 'Bebidas', 'Equipos Vape'
+  nicotineMg: number; // e.g. 0, 3, 6, 20, 35, 50, 55, 70, 100
   imageUrl: string;
-  stockUnits: number; // total portions or ml available
-  costPrice: number; // Cost of liquid to the seller per portion (e.g. $20)
-  priceFullTank: number; // Standard $100
-  priceHalfTank: number; // Standard $50
+  stockUnits: number; // total portions or total vape units available
+  costPrice: number; // Cost of liquid per portion or cost of vape unit to seller
+  priceFullTank: number; // Standard $100 for liquid, or fixed sale price for vape unit
+  priceHalfTank: number; // Standard $50 for liquid, or same as priceFullTank for vape
   description?: string;
+  variants?: VapeVariant[]; // Color variants with independent photos & stock when productType === 'vape'
   isActive: boolean;
 }
 
@@ -26,10 +38,14 @@ export type OrderStatus =
 export interface OrderItem {
   productId: string;
   productName: string;
+  productType?: ProductType;
   portion: PortionType;
-  unitPrice: number; // 100 for full, 50 for half
-  costPrice: number; // Cost of liquid to seller
+  unitPrice: number; // 100 for full, 50 for half, or fixed price for vape
+  costPrice: number; // Cost to seller
   quantity: number;
+  variantId?: string;
+  variantColor?: string;
+  variantImage?: string;
 }
 
 export interface Coordinates {

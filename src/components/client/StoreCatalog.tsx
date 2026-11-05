@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Product, PortionType, OrderItem, StoreConfig, Order } from '../../types';
+import { Product, PortionType, OrderItem, StoreConfig, Order, VapeVariant } from '../../types';
 import { CartDrawerModal } from './CartDrawerModal';
 import { QuickWhatsAppOrderModal } from './QuickWhatsAppOrderModal';
 import { playNotificationSound } from '../../utils/storage';
@@ -11,11 +11,13 @@ import {
   Plus,
   AlertTriangle,
   Search,
-  SlidersHorizontal,
   ShoppingBag,
   Wind,
   Zap,
   MessageCircle,
+  Palette,
+  X,
+  ArrowRight,
 } from 'lucide-react';
 
 interface StoreCatalogProps {
@@ -31,11 +33,21 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
   store,
   onCreateOrder,
 }) => {
+  const [activeCatalogTab, setActiveCatalogTab] = useState<'liquidos' | 'vapes'>('liquidos');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [selectedBrand, setSelectedBrand] = useState<string>('Todas');
   const [sortBy, setSortBy] = useState<string>('recomendados');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedNicotine, setSelectedNicotine] = useState<string>('all');
+  const [selectedVariantByProduct, setSelectedVariantByProduct] = useState<Record<string, string>>({});
+
+  // Immediate Cross-Sell Modal state when a customer adds a Vape
+  const [upsellVapeModal, setUpsellVapeModal] = useState<{
+    vapeProduct: Product;
+    variant?: VapeVariant;
+  } | null>(null);
+  const [upsellSearch, setUpsellSearch] = useState<string>('');
+
   const [cartItems, setCartItems] = useState<OrderItem[]>(() => {
     try {
       const raw = localStorage.getItem('vape_cart_items_v1');
@@ -45,10 +57,16 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     }
   });
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState<boolean>(false);
-  const [quickWhatsAppProduct, setQuickWhatsAppProduct] = useState<Product | null>(null);
+  const [quickWhatsAppState, setQuickWhatsAppState] = useState<{
+    product: Product;
+    variant?: VapeVariant;
+  } | null>(null);
 
   const categories = ['Todos', 'Frutales', 'Mentolados', 'Bebidas', 'Postres', 'Tabacos'];
   const brands = ['Todas', 'Pop Vapors', 'Horny Flava', 'Mistiq Flava', 'Pod Juice'];
+
+  const activeLiquids = products.filter((p) => p.isActive && p.productType !== 'vape');
+  const activeVapes = products.filter((p) => p.isActive && p.productType === 'vape');
 
   // Keep cart items synchronized if Admin edits product prices, names, or stock
   React.useEffect(() => {
@@ -63,19 +81,36 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
             changed = true;
             return null;
           }
-          const expectedPrice =
-            item.portion === 'tanque_lleno' ? prod.priceFullTank || 100 : prod.priceHalfTank || 50;
-          const clampedQty = Math.min(item.quantity, prod.stockUnits);
+          const isVape = prod.productType === 'vape' || item.productType === 'vape';
+          const matchedVariant =
+            isVape && prod.variants && item.variantId
+              ? prod.variants.find((v) => v.id === item.variantId)
+              : undefined;
+          const maxAvailable = matchedVariant ? matchedVariant.stockUnits : prod.stockUnits;
+          if (maxAvailable <= 0) {
+            changed = true;
+            return null;
+          }
+          const expectedPrice = isVape
+            ? prod.priceFullTank || 650
+            : item.portion === 'tanque_lleno'
+            ? prod.priceFullTank || 100
+            : prod.priceHalfTank || 50;
+          const expectedName =
+            isVape && matchedVariant
+              ? `${prod.name} (${matchedVariant.colorName})`
+              : prod.name;
+          const clampedQty = Math.min(item.quantity, maxAvailable);
           if (
             item.unitPrice !== expectedPrice ||
             item.costPrice !== prod.costPrice ||
-            item.productName !== prod.name ||
+            item.productName !== expectedName ||
             item.quantity !== clampedQty
           ) {
             changed = true;
             return {
               ...item,
-              productName: prod.name,
+              productName: expectedName,
               unitPrice: expectedPrice,
               costPrice: prod.costPrice,
               quantity: clampedQty,
@@ -92,14 +127,28 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     .filter((p) => {
       if (!p.isActive) return false;
 
-      // Category filter
-      if (selectedCategory !== 'Todos' && p.flavorCategory.toLowerCase() !== selectedCategory.toLowerCase()) {
-        return false;
-      }
+      const isVape = p.productType === 'vape';
+      if (activeCatalogTab === 'vapes' && !isVape) return false;
+      if (activeCatalogTab === 'liquidos' && isVape) return false;
 
-      // Brand filter
-      if (selectedBrand !== 'Todas' && !p.name.toLowerCase().includes(selectedBrand.toLowerCase())) {
-        return false;
+      if (activeCatalogTab === 'liquidos') {
+        // Category filter
+        if (selectedCategory !== 'Todos' && p.flavorCategory.toLowerCase() !== selectedCategory.toLowerCase()) {
+          return false;
+        }
+
+        // Brand filter
+        if (selectedBrand !== 'Todas' && !p.name.toLowerCase().includes(selectedBrand.toLowerCase())) {
+          return false;
+        }
+
+        // Nicotine filter
+        if (selectedNicotine === 'low' && p.nicotineMg > 6) return false;
+        if (selectedNicotine === 'medium' && (p.nicotineMg <= 6 || p.nicotineMg > 35)) return false;
+        if (selectedNicotine === 'high' && (p.nicotineMg < 50 || p.nicotineMg > 55)) return false;
+        if (selectedNicotine === '70' && p.nicotineMg !== 70) return false;
+        if (selectedNicotine === '100' && p.nicotineMg !== 100) return false;
+        if (selectedNicotine === 'extreme' && p.nicotineMg < 70) return false;
       }
 
       // Search query filter
@@ -108,13 +157,9 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
         const matchName = p.name.toLowerCase().includes(q);
         const matchDesc = p.description?.toLowerCase().includes(q);
         const matchCat = p.flavorCategory.toLowerCase().includes(q);
-        if (!matchName && !matchDesc && !matchCat) return false;
+        const matchColor = p.variants?.some((v) => v.colorName.toLowerCase().includes(q));
+        if (!matchName && !matchDesc && !matchCat && !matchColor) return false;
       }
-
-      // Nicotine filter
-      if (selectedNicotine === 'low' && p.nicotineMg > 6) return false;
-      if (selectedNicotine === 'medium' && (p.nicotineMg <= 6 || p.nicotineMg > 35)) return false;
-      if (selectedNicotine === 'high' && p.nicotineMg < 50) return false;
 
       return true;
     })
@@ -141,6 +186,16 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     window.addEventListener('vape-order-submitted', handleClearOnSubmit);
     return () => window.removeEventListener('vape-order-submitted', handleClearOnSubmit);
   }, []);
+
+  const getActiveVariantForVape = (product: Product): VapeVariant | undefined => {
+    if (!product.variants || product.variants.length === 0) return undefined;
+    const chosenId = selectedVariantByProduct[product.id];
+    if (chosenId) {
+      const found = product.variants.find((v) => v.id === chosenId);
+      if (found) return found;
+    }
+    return product.variants.find((v) => v.stockUnits > 0) || product.variants[0];
+  };
 
   const handleAddPortion = (product: Product, portion: PortionType) => {
     const totalForProductInCart = cartItems
@@ -181,7 +236,7 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
       if (currentSum >= product.stockUnits) return prev;
 
       const existingIdx = prev.findIndex(
-        (it) => it.productId === product.id && it.portion === portion
+        (it) => it.productId === product.id && it.portion === portion && !it.variantId
       );
       if (existingIdx >= 0) {
         const copy = [...prev];
@@ -193,6 +248,7 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
           {
             productId: product.id,
             productName: product.name,
+            productType: 'liquido',
             portion,
             unitPrice,
             costPrice,
@@ -203,11 +259,97 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     });
   };
 
-  const handleRemovePortion = (productId: string, portion: PortionType) => {
+  const handleAddVapeUnit = (
+    product: Product,
+    variant?: VapeVariant,
+    openLiquidSuggestion: boolean = true
+  ) => {
+    const activeVar = variant || getActiveVariantForVape(product);
+    const maxStock = activeVar ? activeVar.stockUnits : product.stockUnits;
+
+    const currentInCart = cartItems
+      .filter(
+        (it) =>
+          it.productId === product.id &&
+          (activeVar ? it.variantId === activeVar.id : true)
+      )
+      .reduce((sum, it) => sum + it.quantity, 0);
+
+    if (currentInCart >= maxStock || maxStock <= 0) {
+      playNotificationSound('alert');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('vape-smoke-burst', {
+            detail: {
+              flavor: `⚠️ Stock máximo alcanzado para ${product.name}${
+                activeVar ? ` (${activeVar.colorName})` : ''
+              }`,
+            },
+          })
+        );
+      }
+      return;
+    }
+
+    const unitPrice = product.priceFullTank || 650;
+    const displayName = activeVar
+      ? `${product.name} (${activeVar.colorName})`
+      : product.name;
+
+    playNotificationSound('vape-hit');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('vape-smoke-burst', {
+          detail: {
+            flavor: `💨 Equipo Vape agregado: ${displayName} ($${unitPrice} DOP)`,
+          },
+        })
+      );
+    }
+
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (it) =>
+          it.productId === product.id &&
+          (activeVar ? it.variantId === activeVar.id : !it.variantId)
+      );
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = { ...copy[existingIdx], quantity: copy[existingIdx].quantity + 1 };
+        return copy;
+      } else {
+        return [
+          ...prev,
+          {
+            productId: product.id,
+            productName: displayName,
+            productType: 'vape',
+            portion: 'tanque_lleno',
+            unitPrice,
+            costPrice: product.costPrice,
+            quantity: 1,
+            variantId: activeVar?.id,
+            variantColor: activeVar?.colorName,
+            variantImage: activeVar?.imageUrl || product.imageUrl,
+          },
+        ];
+      }
+    });
+
+    if (openLiquidSuggestion && activeLiquids.length > 0) {
+      setUpsellSearch('');
+      setUpsellVapeModal({ vapeProduct: product, variant: activeVar });
+    }
+  };
+
+  const handleRemovePortion = (productId: string, portion: PortionType, variantId?: string) => {
     playNotificationSound('pop');
     setCartItems((prev) => {
       const existingIdx = prev.findIndex(
-        (it) => it.productId === productId && it.portion === portion
+        (it) =>
+          it.productId === productId &&
+          it.portion === portion &&
+          (variantId ? it.variantId === variantId : !it.variantId)
       );
       if (existingIdx >= 0) {
         const copy = [...prev];
@@ -222,17 +364,33 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     });
   };
 
-  const handleUpdateQuantity = (productId: string, portion: PortionType, delta: number) => {
+  const handleUpdateQuantity = (
+    productId: string,
+    portion: PortionType,
+    delta: number,
+    variantId?: string
+  ) => {
     if (delta > 0) {
       const product = products.find((p) => p.id === productId);
-      if (product) handleAddPortion(product, portion);
+      if (!product) return;
+      if (product.productType === 'vape') {
+        const variant = product.variants?.find((v) => v.id === variantId);
+        handleAddVapeUnit(product, variant, false);
+      } else {
+        handleAddPortion(product, portion);
+      }
     } else {
-      handleRemovePortion(productId, portion);
+      handleRemovePortion(productId, portion, variantId);
     }
   };
 
-  const getCartQuantity = (productId: string, portion: PortionType) => {
-    const item = cartItems.find((it) => it.productId === productId && it.portion === portion);
+  const getCartQuantity = (productId: string, portion: PortionType, variantId?: string) => {
+    const item = cartItems.find(
+      (it) =>
+        it.productId === productId &&
+        it.portion === portion &&
+        (variantId ? it.variantId === variantId : !it.variantId)
+    );
     return item ? item.quantity : 0;
   };
 
@@ -244,7 +402,7 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
       {/* Street Art Hero Showcase - Inspired by Joker Logo & Graffiti Culture */}
       <div className="relative rounded-3xl overflow-hidden border-2 border-purple-500/40 bg-[#0e091a] shadow-2xl shadow-purple-950/80">
         {/* Restored Urban Street Graffiti Wall layer */}
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center opacity-[0.22] mix-blend-overlay pointer-events-none filter contrast-125"
           style={{ backgroundImage: `url('/assets/graffiti-wall.jpg')` }}
         />
@@ -257,29 +415,30 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
           <div className="flex-1 space-y-3.5 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/80 border border-purple-500/50 text-purple-300 text-xs font-tag tracking-wider shadow">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              EL TEMPLO DEL HUMO • RECARGA CALLEJERA EXPRESS
+              EL TEMPLO DEL HUMO • RECARGAS & EQUIPOS VAPE EXPRESS
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white font-urban tracking-tight uppercase leading-tight">
               ¿SED DE VAPOR? <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-cyan-300 to-lime-300 text-glow-purple">
-                TE LLENAMOS EL TANQUE AL INSTANTE
+                VAPES NUEVOS & RECARGA AL INSTANTE
               </span>
             </h1>
 
             <p className="text-xs sm:text-sm text-neutral-300 font-medium max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              No compres el pote entero si solo quieres recargar. Nuestro delivery llega en moto con los frascos y te echa la porción exacta directo en tu vape: 
-              <strong className="text-emerald-400"> Tanque Lleno por $100 DOP</strong> o <strong className="text-cyan-400">Mitad por $50 DOP</strong>. ¡Humo fresco y denso al toque!
+              Pide tu <strong className="text-cyan-300">Equipo Vape Nuevo</strong> en tu color favorito o recarga tu tanque al toque. Nuestro delivery llega en moto y te dispensa la dosis exacta directo en tu vape:{' '}
+              <strong className="text-emerald-400">Tanque Lleno por $100 DOP</strong> o{' '}
+              <strong className="text-cyan-400">Mitad por $50 DOP</strong>.
             </p>
 
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-1">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 border border-purple-800/60 text-[11px] font-bold text-purple-200">
                 <Wind className="w-4 h-4 text-cyan-400" />
-                <span>Nubes Ultra Espesas 70/30</span>
+                <span>Equipos Vape Multi-Color</span>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 border border-purple-800/60 text-[11px] font-bold text-cyan-200">
                 <Zap className="w-4 h-4 text-amber-400" />
-                <span>Golpe de Garganta Puro</span>
+                <span>Recarga de Líquido al Instante</span>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 border border-purple-800/60 text-[11px] font-bold text-lime-300">
                 <Flame className="w-4 h-4 text-orange-400" />
@@ -320,40 +479,112 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
         </div>
       </div>
 
-      {/* Street Notice Banner: Cómo Funciona la Recarga */}
-      <div className="relative rounded-3xl bg-gradient-to-r from-[#180f2c] via-[#0e091a] to-[#0a1524] border border-purple-800/40 p-4 sm:p-5 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-700 border border-purple-400/50 flex items-center justify-center text-white shrink-0 shadow-lg shadow-purple-600/30">
-              <Droplet className="w-6 h-6 fill-cyan-400 text-cyan-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-tag text-[11px] px-2.5 py-0.5 rounded-md bg-purple-900/60 text-purple-200 border border-purple-500/40 uppercase">
-                  MODALIDAD CALLEJERA • RECARGA EN SITIO
-                </span>
-                <span className="text-xs sm:text-sm font-black text-white font-urban">
-                  ¡No se vende el frasco entero!
-                </span>
-              </div>
-              <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
-                El repartidor llega en su moto con el frasco original sellado y dispensa el líquido directamente en el tanque de tu vape. Pagas solo lo que fumas: <strong>$100 DOP (Lleno)</strong> o <strong>$50 DOP (Mitad)</strong>.
-              </p>
-            </div>
+      {/* PRIMARY STORE TABS: LÍQUIDOS DE RECARGA vs EQUIPOS VAPE */}
+      <div className="grid grid-cols-2 gap-3 p-1.5 rounded-3xl bg-[#110b1f] border-2 border-purple-800/50 shadow-xl">
+        <button
+          type="button"
+          onClick={() => setActiveCatalogTab('liquidos')}
+          className={`py-3.5 px-4 rounded-2xl font-urban font-black text-xs sm:text-base transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
+            activeCatalogTab === 'liquidos'
+              ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white shadow-lg shadow-purple-600/40 border border-emerald-400/50 scale-[1.01]'
+              : 'bg-black/40 text-neutral-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <Droplet className="w-5 h-5 text-emerald-300 fill-emerald-300/30 shrink-0" />
+          <div className="text-left">
+            <span className="block leading-tight">Líquidos de Recarga</span>
+            <span className="text-[10px] font-normal opacity-85 hidden sm:block">
+              Tanque Lleno $100 • Mitad $50 ({activeLiquids.length} sabores)
+            </span>
           </div>
+          <span className="ml-auto px-2 py-0.5 rounded-lg bg-black/50 text-[11px] font-mono">
+            {activeLiquids.length}
+          </span>
+        </button>
 
-          <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 bg-black/60 border border-purple-900/50 rounded-2xl p-2 px-3 text-xs justify-around sm:justify-start">
-            <div className="text-center px-3 border-r border-purple-900/50">
-              <span className="text-[10px] text-purple-300 font-tag block uppercase">TANQUE LLENO</span>
-              <span className="font-black text-emerald-400 text-base font-urban">$100 DOP</span>
+        <button
+          type="button"
+          onClick={() => setActiveCatalogTab('vapes')}
+          className={`py-3.5 px-4 rounded-2xl font-urban font-black text-xs sm:text-base transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
+            activeCatalogTab === 'vapes'
+              ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 text-white shadow-lg shadow-cyan-600/40 border border-cyan-300/60 scale-[1.01]'
+              : 'bg-black/40 text-neutral-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <Wind className="w-5 h-5 text-cyan-300 shrink-0" />
+          <div className="text-left">
+            <span className="block leading-tight">Equipos Vape</span>
+            <span className="text-[10px] font-normal opacity-85 hidden sm:block">
+              Elige color y recárgalo al instante ({activeVapes.length} equipos)
+            </span>
+          </div>
+          <span className="ml-auto px-2 py-0.5 rounded-lg bg-black/50 text-[11px] font-mono">
+            {activeVapes.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Street Notice Banner: Context-Aware for Liquids vs Vapes */}
+      {activeCatalogTab === 'liquidos' ? (
+        <div className="relative rounded-3xl bg-gradient-to-r from-[#180f2c] via-[#0e091a] to-[#0a1524] border border-purple-800/40 p-4 sm:p-5 shadow-xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-700 border border-purple-400/50 flex items-center justify-center text-white shrink-0 shadow-lg shadow-purple-600/30">
+                <Droplet className="w-6 h-6 fill-cyan-400 text-cyan-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-tag text-[11px] px-2.5 py-0.5 rounded-md bg-purple-900/60 text-purple-200 border border-purple-500/40 uppercase">
+                    MODALIDAD CALLEJERA • RECARGA EN SITIO
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-white font-urban">
+                    ¡No se vende el frasco entero!
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                  El repartidor llega en su moto con el frasco original sellado y dispensa el líquido directamente en el tanque de tu vape. Pagas solo lo que fumas:{' '}
+                  <strong>$100 DOP (Lleno)</strong> o <strong>$50 DOP (Mitad)</strong>.
+                </p>
+              </div>
             </div>
-            <div className="text-center px-3">
-              <span className="text-[10px] text-cyan-300 font-tag block uppercase">MITAD TANQUE</span>
-              <span className="font-black text-cyan-400 text-base font-urban">$50 DOP</span>
+
+            <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 bg-black/60 border border-purple-900/50 rounded-2xl p-2 px-3 text-xs justify-around sm:justify-start">
+              <div className="text-center px-3 border-r border-purple-900/50">
+                <span className="text-[10px] text-purple-300 font-tag block uppercase">TANQUE LLENO</span>
+                <span className="font-black text-emerald-400 text-base font-urban">$100 DOP</span>
+              </div>
+              <div className="text-center px-3">
+                <span className="text-[10px] text-cyan-300 font-tag block uppercase">MITAD TANQUE</span>
+                <span className="font-black text-cyan-400 text-base font-urban">$50 DOP</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative rounded-3xl bg-gradient-to-r from-[#0a1929] via-[#0e091a] to-[#1b0e2e] border border-cyan-500/40 p-4 sm:p-5 shadow-xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-700 border border-cyan-400/50 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-600/30">
+                <Wind className="w-6 h-6 text-cyan-200" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-tag text-[11px] px-2.5 py-0.5 rounded-md bg-cyan-950/90 text-cyan-300 border border-cyan-500/40 uppercase">
+                    EQUIPOS VAPE NUEVOS • VARIOS COLORES
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-white font-urban">
+                    ¡Elige tu color favorito y échale líquido de una vez!
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                  Toca cada color para ver su foto real y disponibilidad. Al agregar tu Vape, te sugerimos inmediatamente elegir un sabor de líquido para que te llegue{' '}
+                  <strong className="text-emerald-400">100% recargado y listo para vapear</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filters Strip */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -362,7 +593,11 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
           <Search className="w-4 h-4 text-purple-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por sabor, menta, fruta o marca..."
+            placeholder={
+              activeCatalogTab === 'vapes'
+                ? 'Buscar equipo vape por modelo o color (rojo, verde, azul...)'
+                : 'Buscar por sabor, menta, fruta o marca...'
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-[#120c1f] border border-purple-900/50 rounded-2xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-400 transition-colors shadow-inner font-medium"
@@ -382,16 +617,21 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
             <option value="precio_desc">Precio: Mayor a Menor</option>
           </select>
 
-          <select
-            value={selectedNicotine}
-            onChange={(e) => setSelectedNicotine(e.target.value)}
-            className="bg-[#120c1f] border border-purple-900/50 text-neutral-300 text-xs font-bold rounded-2xl py-2.5 px-3 focus:outline-none focus:border-cyan-400 cursor-pointer"
-          >
-            <option value="all">Todas las Nicotinas</option>
-            <option value="low">0 - 6mg (Freebase)</option>
-            <option value="medium">20 - 35mg (Salt Regular)</option>
-            <option value="high">50 - 55mg (Salt Golpe Intenso)</option>
-          </select>
+          {activeCatalogTab === 'liquidos' && (
+            <select
+              value={selectedNicotine}
+              onChange={(e) => setSelectedNicotine(e.target.value)}
+              className="bg-[#120c1f] border border-purple-900/50 text-neutral-300 text-xs font-bold rounded-2xl py-2.5 px-3 focus:outline-none focus:border-cyan-400 cursor-pointer"
+            >
+              <option value="all">Todas las Nicotinas</option>
+              <option value="low">0 - 6mg (Freebase)</option>
+              <option value="medium">20 - 35mg (Salt Regular)</option>
+              <option value="high">50 - 55mg (Salt Fuerte)</option>
+              <option value="70">70mg (Salt Extra Fuerte)</option>
+              <option value="100">100mg (Salt Extremo)</option>
+              <option value="extreme">70 - 100mg (Golpe Extremo)</option>
+            </select>
+          )}
 
           {totalItemsCount > 0 && (
             <button
@@ -406,75 +646,285 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
         </div>
       </div>
 
-      {/* Category & Brand Filter Strip */}
-      <div className="space-y-2.5">
-        {/* Category Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <span className="text-[11px] font-tag text-purple-400 uppercase tracking-wider shrink-0 mr-1">
-            CATEGORÍA:
-          </span>
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all cursor-pointer font-urban ${
-                selectedCategory === cat
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400'
-                  : 'bg-[#120c1f] text-neutral-400 hover:text-white border border-purple-900/40 hover:border-purple-700'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+      {/* Category & Brand Filter Strip (only for Liquids) */}
+      {activeCatalogTab === 'liquidos' && (
+        <div className="space-y-2.5">
+          {/* Category Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[11px] font-tag text-purple-400 uppercase tracking-wider shrink-0 mr-1">
+              CATEGORÍA:
+            </span>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all cursor-pointer font-urban ${
+                  selectedCategory === cat
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30 border border-purple-400'
+                    : 'bg-[#120c1f] text-neutral-400 hover:text-white border border-purple-900/40 hover:border-purple-700'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
 
-        {/* Brand Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <span className="text-[11px] font-tag text-cyan-400 uppercase tracking-wider shrink-0 mr-1">
-            MARCA:
-          </span>
-          {brands.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => setSelectedBrand(b)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                selectedBrand === b
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-sm'
-                  : 'bg-black/60 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
-              }`}
-            >
-              {b}
-            </button>
-          ))}
+          {/* Brand Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[11px] font-tag text-cyan-400 uppercase tracking-wider shrink-0 mr-1">
+              MARCA:
+            </span>
+            {brands.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setSelectedBrand(b)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedBrand === b
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-sm'
+                    : 'bg-black/60 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
+                }`}
+              >
+                {b}
+              </button>
+            ))}
 
-          {(selectedCategory !== 'Todos' || selectedBrand !== 'Todas' || searchQuery || selectedNicotine !== 'all') && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedCategory('Todos');
-                setSelectedBrand('Todas');
-                setSearchQuery('');
-                setSelectedNicotine('all');
-                setSortBy('recomendados');
-              }}
-              className="px-2.5 py-1 text-[11px] text-purple-400 hover:text-red-400 underline cursor-pointer shrink-0 ml-2 font-medium"
-            >
-              Limpiar filtros
-            </button>
-          )}
+            {(selectedCategory !== 'Todos' || selectedBrand !== 'Todas' || searchQuery || selectedNicotine !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('Todos');
+                  setSelectedBrand('Todas');
+                  setSearchQuery('');
+                  setSelectedNicotine('all');
+                  setSortBy('recomendados');
+                }}
+                className="px-2.5 py-1 text-[11px] text-purple-400 hover:text-red-400 underline cursor-pointer shrink-0 ml-2 font-medium"
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Street Products Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredProducts.length === 0 ? (
           <div className="col-span-full py-16 text-center text-neutral-500 text-sm font-medium bg-[#0e0a17] rounded-3xl border border-purple-900/30">
-            No se encontraron líquidos que coincidan con tu búsqueda. Prueba con otro sabor o categoría.
+            {activeCatalogTab === 'vapes'
+              ? 'No se encontraron equipos Vape que coincidan con tu búsqueda.'
+              : 'No se encontraron líquidos que coincidan con tu búsqueda. Prueba con otro sabor o categoría.'}
           </div>
         ) : (
           filteredProducts.map((product) => {
+            const isVape = product.productType === 'vape';
+
+            if (isVape) {
+              const activeVar = getActiveVariantForVape(product);
+              const displayImage = activeVar?.imageUrl || product.imageUrl;
+              const varStock = activeVar ? activeVar.stockUnits : product.stockUnits;
+              const isOutOfStock = product.stockUnits <= 0 || varStock <= 0;
+              const vapeCartCount = getCartQuantity(product.id, 'tanque_lleno', activeVar?.id);
+
+              return (
+                <div
+                  key={product.id}
+                  className={`group relative bg-[#0b1021]/95 hover:bg-[#10172d] border-2 border-cyan-500/40 hover:border-cyan-400 rounded-3xl p-4 transition-all duration-300 flex flex-col justify-between shadow-xl hover:shadow-2xl hover:shadow-cyan-950/60 hover:-translate-y-1 ${
+                    product.stockUnits <= 0 ? 'opacity-60' : ''
+                  }`}
+                >
+                  <div>
+                    {/* Vape Image Showcase with Active Color Photo */}
+                    <div className="relative w-full h-52 rounded-2xl overflow-hidden bg-black mb-3.5 border border-cyan-900/60 group-hover:border-cyan-400/60 transition-colors">
+                      <img
+                        src={displayImage}
+                        alt={`${product.name} ${activeVar?.colorName || ''}`}
+                        className="w-full h-full object-contain p-3 transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0b1021] via-transparent to-transparent pointer-events-none" />
+
+                      {/* Top tags */}
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 bg-cyan-950/90 backdrop-blur border border-cyan-400/60 rounded-lg text-[10px] font-tag text-cyan-300 uppercase tracking-wider shadow">
+                          💨 {product.flavorCategory || 'EQUIPO VAPE'}
+                        </span>
+                        {activeVar && (
+                          <span className="px-2.5 py-1 bg-black/85 backdrop-blur border border-white/20 rounded-lg text-[10px] font-bold text-white flex items-center gap-1.5 shadow">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border border-white/40"
+                              style={{ backgroundColor: activeVar.colorHex || '#9333ea' }}
+                            />
+                            {activeVar.colorName}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Price tag badge */}
+                      <div className="absolute bottom-2.5 left-2.5">
+                        <span className="px-2.5 py-1 bg-black/90 backdrop-blur border border-emerald-500/60 text-emerald-400 text-xs font-black rounded-lg font-urban shadow">
+                          ${product.priceFullTank} DOP
+                        </span>
+                      </div>
+
+                      {/* Per-color stock badge */}
+                      <div className="absolute bottom-2.5 right-2.5">
+                        {varStock <= 0 ? (
+                          <span className="px-2 py-0.5 bg-red-950/90 border border-red-700 text-red-300 text-[10px] font-bold rounded-md">
+                            Color Agotado
+                          </span>
+                        ) : varStock <= 3 ? (
+                          <span className="px-2 py-0.5 bg-amber-950/90 border border-amber-600/80 text-amber-300 text-[10px] font-bold rounded-md flex items-center gap-1 shadow">
+                            <AlertTriangle className="w-3 h-3 text-amber-400" />
+                            ¡Solo {varStock} en {activeVar?.colorName || 'stock'}!
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-black/80 border border-cyan-800 text-cyan-200 text-[10px] font-bold rounded-md shadow">
+                            Disponibles: {varStock}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Title & Description */}
+                    <h3 className="font-black text-base sm:text-lg text-white group-hover:text-cyan-300 transition-colors font-urban">
+                      {product.name}
+                    </h3>
+                    {product.description && (
+                      <p className="text-xs text-neutral-300 mt-1 line-clamp-2 leading-relaxed">
+                        {product.description}
+                      </p>
+                    )}
+
+                    {/* Interactive Color Swatches */}
+                    {product.variants && product.variants.length > 0 && (
+                      <div className="mt-3 pt-2.5 border-t border-cyan-900/40">
+                        <span className="text-[10px] font-tag text-cyan-300 uppercase tracking-wider flex items-center gap-1 mb-2">
+                          <Palette className="w-3 h-3" />
+                          ELIGE COLOR ({product.variants.length} disponibles):
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {product.variants.map((v) => {
+                            const isSelected = activeVar?.id === v.id;
+                            const out = v.stockUnits <= 0;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() =>
+                                  setSelectedVariantByProduct((prev) => ({
+                                    ...prev,
+                                    [product.id]: v.id,
+                                  }))
+                                }
+                                className={`py-1.5 px-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? 'bg-cyan-950 border-cyan-400 text-white shadow-md shadow-cyan-950 scale-105'
+                                    : out
+                                    ? 'bg-neutral-950/60 border-neutral-800 text-neutral-500 opacity-60'
+                                    : 'bg-black/60 border-neutral-800 text-neutral-300 hover:border-cyan-500/50 hover:text-white'
+                                }`}
+                              >
+                                <span
+                                  className="w-3 h-3 rounded-full border border-white/40 shrink-0"
+                                  style={{ backgroundColor: v.colorHex || '#9333ea' }}
+                                />
+                                <span>{v.colorName}</span>
+                                <span className="text-[10px] opacity-75">
+                                  ({out ? '0' : v.stockUnits})
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vape Price & Action Controls */}
+                  <div className="mt-4 pt-3.5 border-t border-cyan-900/40 space-y-2">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/60 border border-cyan-900/60">
+                      <div>
+                        <span className="text-xs font-bold text-white block font-urban">
+                          Precio Equipo Vape
+                        </span>
+                        <span className="text-sm font-black text-cyan-400 block font-urban">
+                          ${product.priceFullTank} DOP{' '}
+                          <span className="text-[10px] font-normal text-amber-300">
+                            (+{product.priceFullTank} pts)
+                          </span>
+                        </span>
+                      </div>
+
+                      {vapeCartCount === 0 ? (
+                        <button
+                          type="button"
+                          disabled={isOutOfStock}
+                          onClick={() => handleAddVapeUnit(product, activeVar, true)}
+                          className="min-h-[44px] px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all active:scale-95 shadow-lg shadow-cyan-950/80 cursor-pointer font-urban flex items-center justify-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Pedir Vape ({activeVar?.colorName || 'Elegir'})</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5 bg-[#120c1f] border border-cyan-500/60 rounded-xl p-1 shadow">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRemovePortion(product.id, 'tanque_lleno', activeVar?.id)
+                            }
+                            className="w-9 h-9 min-h-[40px] flex items-center justify-center text-neutral-300 hover:text-white font-black text-base cursor-pointer rounded-lg hover:bg-neutral-800"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-black text-cyan-300 px-2 font-urban min-w-[20px] text-center">
+                            {vapeCartCount}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddVapeUnit(product, activeVar, true)}
+                            className="w-9 h-9 min-h-[40px] flex items-center justify-center text-neutral-300 hover:text-white font-black text-base cursor-pointer rounded-lg hover:bg-neutral-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Button to open liquid cross-sell modal at any time */}
+                    {vapeCartCount > 0 && activeLiquids.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setUpsellVapeModal({ vapeProduct: product, variant: activeVar })
+                        }
+                        className="w-full py-2 px-3 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                      >
+                        <Droplet className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
+                        <span>+ Echarle Líquido a este Vape ($50 / $100)</span>
+                      </button>
+                    )}
+
+                    {/* Direct WhatsApp Order Option */}
+                    <button
+                      type="button"
+                      disabled={isOutOfStock}
+                      onClick={() =>
+                        setQuickWhatsAppState({ product, variant: activeVar })
+                      }
+                      className="w-full py-2.5 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/40 active:scale-95 mt-1"
+                    >
+                      <MessageCircle className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+                      <span>Pedir Vape por WhatsApp 💬</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            // LIQUID CARD RENDERING
             const fullCount = getCartQuantity(product.id, 'tanque_lleno');
             const halfCount = getCartQuantity(product.id, 'mitad');
             const isOutOfStock = product.stockUnits <= 0;
@@ -558,7 +1008,8 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                         <span className="text-xs font-bold text-white font-urban">Tanque Lleno</span>
                       </div>
                       <span className="text-xs font-black text-emerald-400 block mt-0.5 font-urban">
-                        ${product.priceFullTank || 100} DOP <span className="text-[10px] font-normal text-neutral-400">(recarga al 100%)</span>
+                        ${product.priceFullTank || 100} DOP{' '}
+                        <span className="text-[10px] font-normal text-neutral-400">(recarga al 100%)</span>
                       </span>
                     </div>
 
@@ -581,7 +1032,9 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                         >
                           -
                         </button>
-                        <span className="text-xs font-black text-emerald-400 px-2 font-urban min-w-[20px] text-center">{fullCount}</span>
+                        <span className="text-xs font-black text-emerald-400 px-2 font-urban min-w-[20px] text-center">
+                          {fullCount}
+                        </span>
                         <button
                           type="button"
                           onClick={() => handleAddPortion(product, 'tanque_lleno')}
@@ -602,7 +1055,8 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                         <span className="text-xs font-bold text-white font-urban">Mitad de Tanque</span>
                       </div>
                       <span className="text-xs font-black text-cyan-400 block mt-0.5 font-urban">
-                        ${product.priceHalfTank || 50} DOP <span className="text-[10px] font-normal text-neutral-400">(media carga)</span>
+                        ${product.priceHalfTank || 50} DOP{' '}
+                        <span className="text-[10px] font-normal text-neutral-400">(media carga)</span>
                       </span>
                     </div>
 
@@ -625,7 +1079,9 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                         >
                           -
                         </button>
-                        <span className="text-xs font-black text-cyan-400 px-2 font-urban min-w-[20px] text-center">{halfCount}</span>
+                        <span className="text-xs font-black text-cyan-400 px-2 font-urban min-w-[20px] text-center">
+                          {halfCount}
+                        </span>
                         <button
                           type="button"
                           onClick={() => handleAddPortion(product, 'mitad')}
@@ -641,7 +1097,7 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                   {/* Direct WhatsApp Order Option */}
                   <button
                     type="button"
-                    onClick={() => setQuickWhatsAppProduct(product)}
+                    onClick={() => setQuickWhatsAppState({ product })}
                     className="w-full py-2.5 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-950/40 active:scale-95 mt-2"
                     title="Pedir este líquido directo por WhatsApp con foto y ubicación"
                   >
@@ -654,6 +1110,172 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
           })
         )}
       </div>
+
+      {/* IMMEDIATE LIQUID CROSS-SELL MODAL WHEN ORDERING A VAPE */}
+      {upsellVapeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 font-urban">
+          <div className="relative w-full max-w-2xl bg-[#0e0a1a] border-2 border-cyan-400/70 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-cyan-950/80 text-white max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-purple-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-black border border-cyan-500/50 p-1.5 shrink-0 flex items-center justify-center">
+                  <img
+                    src={
+                      upsellVapeModal.variant?.imageUrl || upsellVapeModal.vapeProduct.imageUrl
+                    }
+                    alt={upsellVapeModal.vapeProduct.name}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/50 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                    <Check className="w-3 h-3" />
+                    ¡Vape agregado a tu pedido!
+                  </span>
+                  <h3 className="text-base sm:text-xl font-black text-white mt-1">
+                    ¿Le echamos líquido a tu{' '}
+                    <span className="text-cyan-300">
+                      {upsellVapeModal.vapeProduct.name}
+                      {upsellVapeModal.variant ? ` (${upsellVapeModal.variant.colorName})` : ''}
+                    </span>
+                    ? 💧💨
+                  </h3>
+                  <p className="text-xs text-neutral-300 mt-0.5">
+                    Aprovecha el envío: elige tu sabor favorito y te llevamos tu Vape nuevo ya recargado al 100% o a la mitad.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setUpsellVapeModal(null)}
+                className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white cursor-pointer"
+                aria-label="Cerrar sugerencia"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search bar inside Upsell Modal */}
+            <div className="my-3 relative">
+              <Search className="w-4 h-4 text-cyan-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={upsellSearch}
+                onChange={(e) => setUpsellSearch(e.target.value)}
+                placeholder="Buscar sabor de líquido (menta, mango, uva, fresa...)"
+                className="w-full bg-black/70 border border-purple-800/60 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            {/* Liquid Flavors List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              {activeLiquids
+                .filter((liq) => {
+                  if (liq.stockUnits <= 0) return false;
+                  if (!upsellSearch.trim()) return true;
+                  const q = upsellSearch.toLowerCase();
+                  return (
+                    liq.name.toLowerCase().includes(q) ||
+                    liq.flavorCategory.toLowerCase().includes(q) ||
+                    (liq.description || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((liq) => {
+                  const fullInCart = getCartQuantity(liq.id, 'tanque_lleno');
+                  const halfInCart = getCartQuantity(liq.id, 'mitad');
+
+                  return (
+                    <div
+                      key={liq.id}
+                      className="p-3 rounded-2xl bg-black/70 border border-purple-900/50 hover:border-cyan-500/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={liq.imageUrl}
+                          alt={liq.name}
+                          className="w-12 h-12 rounded-xl object-contain bg-neutral-950 border border-purple-800/40 p-1 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-tag px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700/50">
+                              {liq.flavorCategory}
+                            </span>
+                            <span className="text-[10px] font-bold text-cyan-300">
+                              {liq.nicotineMg}mg
+                            </span>
+                          </div>
+                          <h4 className="font-black text-xs sm:text-sm text-white truncate mt-0.5">
+                            {liq.name}
+                          </h4>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleAddPortion(liq, 'tanque_lleno')}
+                          className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border ${
+                            fullInCart > 0
+                              ? 'bg-emerald-600 text-white border-emerald-300 shadow-lg shadow-emerald-950'
+                              : 'bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 border-emerald-500/50'
+                          }`}
+                        >
+                          <Droplet className="w-3.5 h-3.5 fill-current" />
+                          <span>
+                            {fullInCart > 0
+                              ? `✓ Lleno (${fullInCart})`
+                              : `+ Lleno $${liq.priceFullTank || 100}`}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddPortion(liq, 'mitad')}
+                          className={`py-2 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border ${
+                            halfInCart > 0
+                              ? 'bg-cyan-600 text-white border-cyan-300 shadow-lg shadow-cyan-950'
+                              : 'bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 border-cyan-500/50'
+                          }`}
+                        >
+                          <Droplet className="w-3.5 h-3.5" />
+                          <span>
+                            {halfInCart > 0
+                              ? `✓ Mitad (${halfInCart})`
+                              : `+ Mitad $${liq.priceHalfTank || 50}`}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="pt-4 mt-3 border-t border-purple-900/50 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => setUpsellVapeModal(null)}
+                className="w-full sm:w-auto py-3 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-bold cursor-pointer transition-all"
+              >
+                Solo quiero el Vape por ahora
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUpsellVapeModal(null);
+                  onStartCheckout(cartItems);
+                }}
+                className="w-full sm:flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-black text-xs sm:text-sm shadow-xl shadow-purple-600/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
+              >
+                <span>Confirmar Pedido (${totalLiquidAmount} DOP)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Bottom Cart Bar with Neon Street Drip Style */}
       {totalItemsCount > 0 && (
@@ -670,7 +1292,7 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
                 ${totalLiquidAmount} DOP
               </div>
               <span className="text-[10px] sm:text-[11px] text-purple-300 block font-tag">
-                Ver canasta & dosis ➔
+                Ver canasta & pedido ➔
               </span>
             </div>
           </div>
@@ -697,14 +1319,16 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
       />
 
       {/* Quick WhatsApp Order Modal */}
-      {quickWhatsAppProduct && store && (
+      {quickWhatsAppState && store && (
         <QuickWhatsAppOrderModal
-          product={quickWhatsAppProduct}
+          product={quickWhatsAppState.product}
+          initialVariant={quickWhatsAppState.variant}
+          availableLiquids={activeLiquids}
           store={store}
-          onClose={() => setQuickWhatsAppProduct(null)}
+          onClose={() => setQuickWhatsAppState(null)}
           onCreateOrder={(order) => {
             onCreateOrder?.(order);
-            setQuickWhatsAppProduct(null);
+            setQuickWhatsAppState(null);
           }}
         />
       )}

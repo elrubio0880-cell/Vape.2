@@ -1,8 +1,13 @@
 node_modules/
 build/
 dist/
+dev-dist/
+.vercel/
+bun.lock
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+
+
