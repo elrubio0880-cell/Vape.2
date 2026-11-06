@@ -10,216 +10,38 @@ export const DEFAULT_STORE: StoreConfig = {
   isOpen: true,
 };
 
-export const INITIAL_PRODUCTS: Product[] = [
-  {
-    id: 'prod-horny-ice-mint',
-    name: 'Horny Flava Ice Mint Bubblegum',
-    flavorCategory: 'Mentolados',
-    nicotineMg: 35,
-    imageUrl: '/liquidos/horny-flava-ice-mint-bubblegum-120ml-liquids-liquids-melca-distro-605_500x.webp',
-    stockUnits: 40,
-    costPrice: 20,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Delicioso chicle dulce con una intensa explosión helada de menta glacial.',
-    isActive: true,
-  },
-  {
-    id: 'prod-mistiq-melon',
-    name: 'Mistiq Flava Melón Ice',
-    flavorCategory: 'Frutales',
-    nicotineMg: 20,
-    imageUrl: '/liquidos/mistiq-flava-melon-120ml-liquids-liquids-melca-distro-899_500x.webp',
-    stockUnits: 35,
-    costPrice: 22,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Pulpa de melón cantaloupe dulce y jugosa con un toque escarchado característico.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pod-juice-energy',
-    name: 'Pod Juice Salt Energy Freeze',
-    flavorCategory: 'Bebidas',
-    nicotineMg: 55,
-    imageUrl: '/liquidos/pod-juice-salt-energy-freeze-30ml-55mg-liquids-juice-liquids-melca-distro-438_500x.webp',
-    stockUnits: 25,
-    costPrice: 25,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Electrizante sabor a bebida energética cítrica con efecto freeze polar intenso.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-big-apple',
-    name: 'Pop Iced Big Apple',
-    flavorCategory: 'Frutales',
-    nicotineMg: 35,
-    imageUrl: '/liquidos/pop-iced-big-apple-100ml-liquids-liquids-pop-vapors-melca-distro-934_500x.webp',
-    stockUnits: 30,
-    costPrice: 20,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Manzanas rojas y verdes crujientes con un refrescante golpe de frío.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-blueberry-lemonade',
-    name: 'Pop Iced Blueberry Lemonade',
-    flavorCategory: 'Bebidas',
-    nicotineMg: 35,
-    imageUrl: '/liquidos/pop-iced-blueberry-lemonade-100ml-liquids-liquids-pop-vapors-melca-distro-958_500x.webp',
-    stockUnits: 28,
-    costPrice: 22,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Limonada cítrica recién exprimida mezclada con arándanos y hielo picado.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-grape',
-    name: 'Pop Iced Grape',
-    flavorCategory: 'Frutales',
-    nicotineMg: 20,
-    imageUrl: '/liquidos/pop-iced-grape-100ml-liquids-liquids-pop-vapors-melca-distro-444_500x.webp',
-    stockUnits: 32,
-    costPrice: 20,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Uvas moradas dulces y jugosas con una frescura estilo slushy helado.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-mango-dragon-fruit',
-    name: 'Pop Iced Mango Dragon Fruit',
-    flavorCategory: 'Frutales',
-    nicotineMg: 35,
-    imageUrl: '/liquidos/pop-iced-mango-dragon-fruit-100ml-liquids-liquids-pop-vapors-melca-distro-892_500x.webp',
-    stockUnits: 38,
-    costPrice: 22,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Exótica combinación de mango maduro con pitahaya (dragon fruit) y toque ice.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-mango-strawberry',
-    name: 'Pop Iced Mango Strawberry',
-    flavorCategory: 'Frutales',
-    nicotineMg: 35,
-    imageUrl: '/liquidos/pop-iced-mango-strawberry-100ml-liquids-fresa-liquids-pop-vapors-melca-distro-715_500x.webp',
-    stockUnits: 30,
-    costPrice: 22,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Mango carnoso dulce y fresas silvestres en un torbellino frío.',
-    isActive: true,
-  },
-  {
-    id: 'prod-pop-strawberry-watermelon',
-    name: 'Pop Iced Strawberry Watermelon',
-    productType: 'liquido',
-    flavorCategory: 'Frutales',
-    nicotineMg: 50,
-    imageUrl: '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp',
-    stockUnits: 26,
-    costPrice: 24,
-    priceFullTank: 100,
-    priceHalfTank: 50,
-    description: 'Recarga de tanque: Dúo veraniego de fresa madura y sandía jugosa con cristales de hielo.',
-    isActive: true,
-  },
-  {
-    id: 'prod-vape-puff-pro',
-    name: 'Vape Puff Recargable Street Pro',
-    productType: 'vape',
-    flavorCategory: 'Equipos Vape',
-    nicotineMg: 0,
-    imageUrl: '/logo-black-vape.jpeg',
-    stockUnits: 14,
-    costPrice: 350,
-    priceFullTank: 650,
-    priceHalfTank: 650,
-    description: 'Equipo Vape recargable de alto rendimiento con tanque rellenable malla mesh y puerto USB-C. ¡Elige tu color favorito y agrégale líquido al instante!',
-    variants: [
-      {
-        id: 'var-puff-rojo',
-        colorName: 'Rojo',
-        colorHex: '#ef4444',
-        imageUrl: '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp',
-        stockUnits: 4,
-      },
-      {
-        id: 'var-puff-verde',
-        colorName: 'Verde',
-        colorHex: '#10b981',
-        imageUrl: '/liquidos/mistiq-flava-melon-120ml-liquids-liquids-melca-distro-899_500x.webp',
-        stockUnits: 4,
-      },
-      {
-        id: 'var-puff-azul',
-        colorName: 'Azul',
-        colorHex: '#3b82f6',
-        imageUrl: '/liquidos/pop-iced-blueberry-lemonade-100ml-liquids-liquids-pop-vapors-melca-distro-958_500x.webp',
-        stockUnits: 3,
-      },
-      {
-        id: 'var-puff-morado',
-        colorName: 'Morado',
-        colorHex: '#9333ea',
-        imageUrl: '/liquidos/pop-iced-grape-100ml-liquids-liquids-pop-vapors-melca-distro-444_500x.webp',
-        stockUnits: 3,
-      },
-    ],
-    isActive: true,
-  },
-  {
-    id: 'prod-vape-pod-caliburn',
-    name: 'Vape Pod Recargable Black Edition',
-    productType: 'vape',
-    flavorCategory: 'Equipos Vape',
-    nicotineMg: 0,
-    imageUrl: '/logo-black-vape.jpeg',
-    stockUnits: 9,
-    costPrice: 450,
-    priceFullTank: 850,
-    priceHalfTank: 850,
-    description: 'Pod recargable compacto para sales y freebase con flujo de aire ajustable y cartucho transparente para recargas de $50 o $100 DOP.',
-    variants: [
-      {
-        id: 'var-pod-negro',
-        colorName: 'Negro',
-        colorHex: '#171717',
-        imageUrl: '/logo-black-vape.jpeg',
-        stockUnits: 4,
-      },
-      {
-        id: 'var-pod-dorado',
-        colorName: 'Dorado',
-        colorHex: '#eab308',
-        imageUrl: '/liquidos/pop-iced-mango-dragon-fruit-100ml-liquids-liquids-pop-vapors-melca-distro-892_500x.webp',
-        stockUnits: 3,
-      },
-      {
-        id: 'var-pod-rosa',
-        colorName: 'Rosa',
-        colorHex: '#ec4899',
-        imageUrl: '/liquidos/horny-flava-ice-mint-bubblegum-120ml-liquids-liquids-melca-distro-605_500x.webp',
-        stockUnits: 2,
-      },
-    ],
-    isActive: true,
-  },
-];
+export const LEGACY_DEMO_PRODUCT_IDS = new Set([
+  'prod-horny-ice-mint',
+  'prod-mistiq-melon',
+  'prod-pod-juice-energy',
+  'prod-pop-big-apple',
+  'prod-pop-blueberry-lemonade',
+  'prod-pop-grape',
+  'prod-pop-mango-dragon-fruit',
+  'prod-pop-mango-strawberry',
+  'prod-pop-strawberry-watermelon',
+  'prod-vape-puff-pro',
+  'prod-vape-pod-caliburn',
+]);
 
-const DEMO_ORDER_IDS = new Set(['ORD-700', 'ORD-701', 'ORD-702', 'ORD-901', 'ORD-902']);
+export const INITIAL_PRODUCTS: Product[] = [];
+
+const DEMO_ORDER_IDS = new Set([
+  'ORD-700',
+  'ORD-701',
+  'ORD-702',
+  'ORD-901',
+  'ORD-902',
+  'ORD-TEST-5990',
+  'ORD-O7F881',
+]);
 
 export const INITIAL_ORDERS: Order[] = [];
 
 const STORAGE_KEYS = {
   AGE_VERIFIED: 'vape_age_verified_v1',
-  PRODUCTS: 'vape_products_v2', // bumped to v2 for real 9 liquid images
-  ORDERS: 'vape_orders_v2',
+  PRODUCTS: 'vape_products_v3_db',
+  ORDERS: 'vape_orders_v3_db',
   STORE: 'vape_store_config_v1',
   ACTIVE_ROLE: 'vape_active_role_v1',
   CLIENT_CONTACT: 'vape_client_contact_v1',
@@ -348,53 +170,29 @@ export function setStoreCustomized(customized: boolean): void {
 }
 
 export function getStoredProducts(): Product[] {
-  if (typeof window === 'undefined') return INITIAL_PRODUCTS;
+  if (typeof window === 'undefined') return [];
   const raw = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-    return INITIAL_PRODUCTS;
-  }
+  if (!raw) return [];
   try {
     const parsed: Product[] = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
-    }
-    const hasValidImages = parsed.some(
-      (p) =>
-        p.imageUrl?.startsWith('/liquidos/') ||
-        p.imageUrl?.startsWith('/logo-') ||
-        p.imageUrl?.startsWith('data:image') ||
-        p.imageUrl?.startsWith('http')
-    );
-    if (!hasValidImages) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
-    }
-
-    // Ensure initial Vape products are present for existing users unless deleted by admin
+    if (!Array.isArray(parsed)) return [];
     const deletedIds = new Set(getDeletedProductIds());
-    const existingIds = new Set(parsed.map((p) => p.id));
-    let updated = false;
-    const merged = [...parsed];
-    for (const initProd of INITIAL_PRODUCTS) {
-      if (initProd.productType === 'vape' && !existingIds.has(initProd.id) && !deletedIds.has(initProd.id)) {
-        merged.push(initProd);
-        updated = true;
-      }
+    const cleaned = parsed.filter(
+      (p) => p && !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && !deletedIds.has(p.id) && p.isActive !== false
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleaned));
     }
-    if (updated) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(merged));
-    }
-    return merged;
+    return cleaned;
   } catch {
-    return INITIAL_PRODUCTS;
+    return [];
   }
 }
 
 export function saveProducts(products: Product[], markCustom: boolean = true): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+  const cleaned = products.filter((p) => p && !LEGACY_DEMO_PRODUCT_IDS.has(p.id));
+  localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleaned));
   if (markCustom) {
     setProductsCustomized(true);
   }

@@ -97,7 +97,7 @@ npm run build
 3. Importa tu repositorio.
 4. En **Framework Preset**, Vercel detectará automáticamente **Vite**.
 5. En la sección **Environment Variables**, añade:
-   * `VITE_SUPABASE_URL`: Tu URL de Supabase (ej: `https://alwxeeyozlxfuysxhzay.supabase.co`).
+   * `VITE_SUPABASE_URL`: Tu URL de Supabase (ej: `https://pjipjzsdosyxasnhwmbk.supabase.co`).
    * `VITE_SUPABASE_ANON_KEY`: Tu clave pública publishable/anon (ej: `sb_publishable_...`).
 6. En **Build Command**: `npm run build`
 7. En **Output Directory**: `dist`

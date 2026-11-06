@@ -3,6 +3,7 @@ import { Product, PortionType, OrderItem, StoreConfig, Order, VapeVariant } from
 import { CartDrawerModal } from './CartDrawerModal';
 import { QuickWhatsAppOrderModal } from './QuickWhatsAppOrderModal';
 import { playNotificationSound } from '../../utils/storage';
+import vapeSmokeAtmosphereImg from '../../assets/images/vape_smoke_atmosphere_1793233367830.jpg';
 import {
   Flame,
   Droplet,
@@ -401,10 +402,10 @@ export const StoreCatalog: React.FC<StoreCatalogProps> = ({
     <div className="space-y-7 relative z-10">
       {/* Street Art Hero Showcase - Inspired by Joker Logo & Graffiti Culture */}
       <div className="relative rounded-3xl overflow-hidden border-2 border-purple-500/40 bg-[#0e091a] shadow-2xl shadow-purple-950/80">
-        {/* Restored Urban Street Graffiti Wall layer */}
+        {/* Vapor Atmosphere Hero Background */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.22] mix-blend-overlay pointer-events-none filter contrast-125"
-          style={{ backgroundImage: `url('/assets/graffiti-wall.jpg')` }}
+          className="absolute inset-0 bg-cover bg-center opacity-35 mix-blend-screen pointer-events-none"
+          style={{ backgroundImage: `url(${vapeSmokeAtmosphereImg})` }}
         />
         {/* Atmospheric ambient radiant lighting */}
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-purple-600/25 rounded-full blur-3xl pointer-events-none" />

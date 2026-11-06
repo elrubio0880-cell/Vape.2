@@ -1,6 +1,6 @@
 -- ==============================================================================
--- BLACK VAPE DELIVERY - MIGRACIÓN INICIAL COMPLETA PARA SUPABASE
--- Plataforma de pedidos de líquidos con delivery en tiempo real
+-- BLACK VAPE DELIVERY - MIGRACIÓN OFICIAL COMPLETA PARA SUPABASE
+-- Plataforma de pedidos de líquidos y equipos vape con delivery en tiempo real
 -- Regla de negocio: 1.5 km = $25 DOP (Haversine en servidor)
 -- ==============================================================================
 
@@ -53,7 +53,6 @@ $$;
 -- Hasta 1.5 km inclusive: $25 DOP
 -- 1.51 km a 3.0 km: $50 DOP
 -- 3.01 km a 4.5 km: $75 DOP
--- etc.
 CREATE OR REPLACE FUNCTION public.calculate_delivery_fee(distance_km numeric)
 RETURNS numeric
 LANGUAGE sql
@@ -73,15 +72,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   name text NOT NULL,
   phone text,
   username text UNIQUE,
+  points_balance integer NOT NULL DEFAULT 0 CHECK (points_balance >= 0),
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 3.2 Catálogo de Líquidos (Products)
+-- 3.2 Catálogo de Productos (Líquidos, Equipos Vape y Accesorios con Variantes JSONB)
 CREATE TABLE IF NOT EXISTS public.products (
   id text PRIMARY KEY,
   name text NOT NULL,
+  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
   flavor_category text NOT NULL,
   nicotine_mg integer NOT NULL DEFAULT 0,
   image_url text NOT NULL,
@@ -90,10 +91,25 @@ CREATE TABLE IF NOT EXISTS public.products (
   price_full_tank numeric(10,2) NOT NULL DEFAULT 100.00 CHECK (price_full_tank > 0),
   price_half_tank numeric(10,2) NOT NULL DEFAULT 50.00 CHECK (price_half_tank > 0),
   description text,
+  variants jsonb NOT NULL DEFAULT '[]'::jsonb,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Asegurar columnas nativas y restricción actualizada si la tabla products ya existía
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido',
+  ADD COLUMN IF NOT EXISTS variants jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+DO $$
+BEGIN
+  ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_product_type_check;
+  ALTER TABLE public.products
+    ADD CONSTRAINT products_product_type_check
+    CHECK (product_type IN ('liquido', 'vape', 'accesorio'));
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 3.3 Configuración de la Tienda / Local Físico (Fila Única id=1)
 CREATE TABLE IF NOT EXISTS public.store_config (
@@ -104,8 +120,10 @@ CREATE TABLE IF NOT EXISTS public.store_config (
   longitude numeric(10,7) NOT NULL DEFAULT -71.61287,
   phone text NOT NULL DEFAULT '8092104901',
   whatsapp text NOT NULL DEFAULT '8092104901',
-  bank_account_info text NOT NULL DEFAULT 'Banreservas Cta Corriente: 960-441209-1 • Titular: BLACK VAPE SRL',
+  bank_account_info text NOT NULL DEFAULT 'Banreservas / Popular • Titular: Noadia Claribel (Colmado Noadia) • WhatsApp Comprobante: 809-210-4901',
   is_open boolean NOT NULL DEFAULT true,
+  points_per_redemption integer NOT NULL DEFAULT 1000 CHECK (points_per_redemption > 0),
+  redemptions_enabled boolean NOT NULL DEFAULT true,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -145,7 +163,10 @@ CREATE TABLE IF NOT EXISTS public.orders (
   driver_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   driver_name text,
 
-  -- Pagos y notas
+  -- Pagos, canjes y notas
+  order_type text NOT NULL DEFAULT 'regular' CHECK (order_type IN ('regular', 'canje')),
+  points_redeemed integer NOT NULL DEFAULT 0 CHECK (points_redeemed >= 0),
+  redemption_id uuid,
   payment_method text NOT NULL DEFAULT 'efectivo' CHECK (payment_method IN ('efectivo', 'transferencia', 'tarjeta')),
   cash_given numeric(10,2),
   change_due numeric(10,2),
@@ -159,13 +180,40 @@ CREATE TABLE IF NOT EXISTS public.orders (
 CREATE TABLE IF NOT EXISTS public.order_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id text NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-  product_id text NOT NULL REFERENCES public.products(id),
+  product_id text REFERENCES public.products(id) ON DELETE SET NULL,
   product_name text NOT NULL,
+  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
+  variant_id text,
+  variant_color text,
+  variant_image text,
   portion text NOT NULL CHECK (portion IN ('tanque_lleno', 'mitad')),
-  unit_price numeric(10,2) NOT NULL CHECK (unit_price > 0),
+  unit_price numeric(10,2) NOT NULL CHECK (unit_price >= 0),
   cost_price numeric(10,2) NOT NULL DEFAULT 0.00 CHECK (cost_price >= 0),
   quantity integer NOT NULL CHECK (quantity > 0)
 );
+
+-- Asegurar columnas y llave foránea ON DELETE SET NULL en order_items si ya existía
+ALTER TABLE public.order_items
+  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido',
+  ADD COLUMN IF NOT EXISTS variant_id text,
+  ADD COLUMN IF NOT EXISTS variant_color text,
+  ADD COLUMN IF NOT EXISTS variant_image text;
+
+DO $$
+BEGIN
+  ALTER TABLE public.order_items ALTER COLUMN product_id DROP NOT NULL;
+  ALTER TABLE public.order_items DROP CONSTRAINT IF EXISTS order_items_product_id_fkey;
+  ALTER TABLE public.order_items
+    ADD CONSTRAINT order_items_product_id_fkey
+    FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+  ALTER TABLE public.order_items DROP CONSTRAINT IF EXISTS order_items_unit_price_check;
+  ALTER TABLE public.order_items ADD CONSTRAINT order_items_unit_price_check CHECK (unit_price >= 0);
+  ALTER TABLE public.order_items DROP CONSTRAINT IF EXISTS order_items_product_type_check;
+  ALTER TABLE public.order_items
+    ADD CONSTRAINT order_items_product_type_check
+    CHECK (product_type IN ('liquido', 'vape', 'accesorio'));
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 3.6 Ubicación en Vivo de Repartidores (Driver Locations)
 CREATE TABLE IF NOT EXISTS public.driver_locations (
@@ -241,9 +289,15 @@ DECLARE
   v_name text;
   v_phone text;
   v_username text;
+  v_clean_email text;
 BEGIN
+  v_clean_email := lower(trim(COALESCE(new.email, '')));
   v_role := COALESCE(new.raw_user_meta_data->>'role', 'comprador');
-  IF v_role = 'admin' AND NOT public.is_admin() THEN
+
+  -- Cuentas administradoras principales autorizadas siempre reciben rol 'admin'
+  IF v_clean_email IN ('noadiasclaribel.y2k@icloud.com', 'elrubio0880.0@gmail.com') THEN
+    v_role := 'admin';
+  ELSIF v_role = 'admin' AND NOT public.is_admin() THEN
     v_role := 'comprador';
   ELSIF v_role NOT IN ('comprador', 'delivery', 'admin') THEN
     v_role := 'comprador';
@@ -256,7 +310,11 @@ BEGIN
   INSERT INTO public.profiles (id, role, name, phone, username, is_active)
   VALUES (new.id, v_role, v_name, v_phone, v_username, true)
   ON CONFLICT (id) DO UPDATE
-  SET name = EXCLUDED.name,
+  SET role = CASE
+        WHEN v_clean_email IN ('noadiasclaribel.y2k@icloud.com', 'elrubio0880.0@gmail.com') THEN 'admin'
+        ELSE profiles.role
+      END,
+      name = EXCLUDED.name,
       phone = COALESCE(EXCLUDED.phone, profiles.phone),
       username = COALESCE(EXCLUDED.username, profiles.username),
       updated_at = now();
@@ -290,7 +348,7 @@ CREATE TRIGGER trg_protect_profile_sensitive_columns
   FOR EACH ROW EXECUTE FUNCTION public.protect_profile_sensitive_columns();
 
 -- ==============================================================================
--- 6. RPC: CREACIÓN SEGURA DE PEDIDOS (Cálculo de Precios y Distancia en Servidor)
+-- 6. RPC: CREACIÓN SEGURA DE PEDIDOS (Cálculo de Precios, Variantes y Distancia)
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.create_order_secure(
   p_order_id text,
@@ -302,7 +360,7 @@ CREATE OR REPLACE FUNCTION public.create_order_secure(
   p_payment_method text,
   p_cash_given numeric,
   p_special_notes text,
-  p_items jsonb -- Arreglo: [{ product_id, portion, quantity }]
+  p_items jsonb -- Arreglo: [{ product_id, portion, quantity, product_type, variant_id, variant_color, variant_image }]
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -323,6 +381,10 @@ DECLARE
   v_change_due numeric := NULL;
   v_item_portion text;
   v_item_quantity integer;
+  v_item_type text;
+  v_variant_id text;
+  v_variant_color text;
+  v_variant_image text;
   v_clean_phone text;
 BEGIN
   -- 1. Validaciones de entrada en servidor
@@ -354,7 +416,7 @@ BEGIN
   END IF;
 
   IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
-    RAISE EXCEPTION 'El pedido debe contener al menos un líquido.';
+    RAISE EXCEPTION 'El pedido debe contener al menos un producto.';
   END IF;
 
   -- 2. Obtener coordenadas del local central
@@ -375,11 +437,11 @@ BEGIN
   -- 4. Validar productos, porciones, stock e importes desde la tabla 'products'
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
-    v_item_portion := v_item->>'portion';
+    v_item_portion := COALESCE(v_item->>'portion', 'tanque_lleno');
     v_item_quantity := (v_item->>'quantity')::integer;
 
     IF v_item_quantity IS NULL OR v_item_quantity <= 0 THEN
-      RAISE EXCEPTION 'La cantidad de cada líquido debe ser mayor a 0.';
+      RAISE EXCEPTION 'La cantidad de cada producto debe ser mayor a 0.';
     END IF;
 
     IF v_item_portion NOT IN ('tanque_lleno', 'mitad') THEN
@@ -395,7 +457,7 @@ BEGIN
       RAISE EXCEPTION 'Stock insuficiente para %: solo quedan % unidades.', v_prod.name, v_prod.stock_units;
     END IF;
 
-    IF v_item_portion = 'tanque_lleno' THEN
+    IF v_prod.product_type IN ('vape', 'accesorio') OR v_item_portion = 'tanque_lleno' THEN
       v_item_unit_price := v_prod.price_full_tank;
     ELSE
       v_item_unit_price := v_prod.price_half_tank;
@@ -447,7 +509,7 @@ BEGIN
     v_liquid_cost_total,
     v_distance_km,
     v_delivery_fee,
-    v_delivery_fee, -- Inicialmente coincide con la calculada
+    v_delivery_fee,
     v_delivery_fee,
     v_total_amount,
     'pendiente_cotizacion',
@@ -457,15 +519,23 @@ BEGIN
     trim(p_special_notes)
   );
 
-  -- 6. Insertar detalle de ítems
+  -- 6. Insertar detalle de ítems (con soporte de Equipos Vape, Accesorios y colores)
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
-    v_item_portion := v_item->>'portion';
+    v_item_portion := COALESCE(v_item->>'portion', 'tanque_lleno');
     v_item_quantity := (v_item->>'quantity')::integer;
+    v_variant_id := NULLIF(trim(COALESCE(v_item->>'variant_id', '')), '');
+    v_variant_color := NULLIF(trim(COALESCE(v_item->>'variant_color', '')), '');
+    v_variant_image := NULLIF(trim(COALESCE(v_item->>'variant_image', '')), '');
 
     SELECT * INTO v_prod FROM public.products WHERE id = (v_item->>'product_id');
 
-    IF v_item_portion = 'tanque_lleno' THEN
+    v_item_type := COALESCE(NULLIF(v_item->>'product_type', ''), v_prod.product_type, 'liquido');
+    IF v_item_type NOT IN ('liquido', 'vape', 'accesorio') THEN
+      v_item_type := 'liquido';
+    END IF;
+
+    IF v_item_type IN ('vape', 'accesorio') OR v_item_portion = 'tanque_lleno' THEN
       v_item_unit_price := v_prod.price_full_tank;
     ELSE
       v_item_unit_price := v_prod.price_half_tank;
@@ -475,6 +545,10 @@ BEGIN
       order_id,
       product_id,
       product_name,
+      product_type,
+      variant_id,
+      variant_color,
+      variant_image,
       portion,
       unit_price,
       cost_price,
@@ -482,7 +556,15 @@ BEGIN
     ) VALUES (
       p_order_id,
       v_prod.id,
-      v_prod.name,
+      CASE
+        WHEN v_variant_color IS NOT NULL AND position('(' in v_prod.name) = 0
+        THEN format('%s (%s)', v_prod.name, v_variant_color)
+        ELSE v_prod.name
+      END,
+      v_item_type,
+      v_variant_id,
+      v_variant_color,
+      v_variant_image,
       v_item_portion,
       v_item_unit_price,
       v_prod.cost_price,
@@ -570,59 +652,34 @@ END;
 $$;
 
 -- ==============================================================================
--- 8. RPC: MARCAR ENTREGADO CON DESCUENTO ATÓMICO DE STOCK EN SERVIDOR
+-- 8. RPCs DE ADMINISTRACIÓN DE CATÁLOGO Y PURGA DE PEDIDOS
 -- ==============================================================================
-CREATE OR REPLACE FUNCTION public.mark_order_delivered(p_order_id text)
+
+-- 8.1 RPC: Eliminar un producto físicamente de la base de datos (Solo Admin)
+CREATE OR REPLACE FUNCTION public.delete_product_admin(p_product_id text)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
-DECLARE
-  v_order public.orders%ROWTYPE;
-  v_item record;
 BEGIN
-  -- Bloqueo atómico del pedido
-  SELECT * INTO v_order
-  FROM public.orders
-  WHERE id = p_order_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Pedido % no encontrado.', p_order_id;
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Acceso denegado: solo un administrador puede eliminar productos.';
   END IF;
 
-  IF v_order.status = 'entregado' THEN
-    RETURN jsonb_build_object('success', true, 'message', 'El pedido ya estaba marcado como entregado.');
-  END IF;
+  -- Desvincular referencias históricas para permitir borrado físico limpio
+  UPDATE public.order_items SET product_id = NULL WHERE product_id = p_product_id;
+  UPDATE public.redemptions SET product_id = NULL WHERE product_id = p_product_id;
 
-  -- 1. Descontar stock de cada líquido vendido
-  FOR v_item IN
-    SELECT product_id, quantity
-    FROM public.order_items
-    WHERE order_id = p_order_id
-  LOOP
-    UPDATE public.products
-    SET stock_units = GREATEST(0, stock_units - v_item.quantity),
-        updated_at = now()
-    WHERE id = v_item.product_id;
-  END LOOP;
+  DELETE FROM public.products WHERE id = p_product_id;
 
-  -- 2. Actualizar estado
-  UPDATE public.orders
-  SET status = 'entregado',
-      updated_at = now()
-  WHERE id = p_order_id;
-
-  INSERT INTO public.order_status_history (order_id, status, note)
-  VALUES (p_order_id, 'entregado', 'Líquidos dispensados y cobrados. Stock descontado en servidor.');
-
-  RETURN jsonb_build_object('success', true, 'order_id', p_order_id, 'status', 'entregado');
+  RETURN jsonb_build_object(
+    'success', true,
+    'deleted_id', p_product_id
+  );
 END;
 $$;
 
--- ==============================================================================
--- 8.1 RPC: PURGAR PEDIDOS DE PRUEBA (SOLO ADMIN AUTENTICADO)
--- ==============================================================================
+-- 8.2 RPC: Purgar pedidos de prueba (Solo Admin autenticado)
 CREATE OR REPLACE FUNCTION public.clear_test_orders_admin()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -631,7 +688,6 @@ AS $$
 DECLARE
   v_count integer;
 BEGIN
-  -- Validar que el invocador sea administrador
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Acceso denegado: solo un administrador autenticado puede purgar los pedidos.';
   END IF;
@@ -639,7 +695,7 @@ BEGIN
   SELECT count(*) INTO v_count FROM public.orders;
 
   -- Borrar todas las órdenes (order_items y order_status_history se borran por CASCADE)
-  DELETE FROM public.orders;
+  DELETE FROM public.orders WHERE true;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -679,13 +735,11 @@ CREATE POLICY "profiles_admin_all"
 -- 9.2 PRODUCTS
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 
--- Lectura pública para cualquier cliente o visitante
 DROP POLICY IF EXISTS "products_public_select" ON public.products;
 CREATE POLICY "products_public_select"
   ON public.products FOR SELECT
   USING (true);
 
--- Solo administradores pueden crear, modificar o borrar productos
 DROP POLICY IF EXISTS "products_admin_modify" ON public.products;
 CREATE POLICY "products_admin_modify"
   ON public.products FOR ALL
@@ -709,24 +763,26 @@ CREATE POLICY "store_config_admin_update"
 -- 9.4 ORDERS
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
--- Lectura para seguimiento en tiempo real de pedidos (clientes registrados, invitados, repartidores y admin)
 DROP POLICY IF EXISTS "orders_select_policy" ON public.orders;
 CREATE POLICY "orders_select_policy"
   ON public.orders FOR SELECT
   USING (true);
 
--- Inserción: autenticados o anónimos que creen pedidos
 DROP POLICY IF EXISTS "orders_insert_policy" ON public.orders;
 CREATE POLICY "orders_insert_policy"
   ON public.orders FOR INSERT
   WITH CHECK (true);
 
--- Actualización controlada por rol o pedido activo
 DROP POLICY IF EXISTS "orders_update_policy" ON public.orders;
 CREATE POLICY "orders_update_policy"
   ON public.orders FOR UPDATE
   USING (true)
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS "orders_delete_admin" ON public.orders;
+CREATE POLICY "orders_delete_admin"
+  ON public.orders FOR DELETE
+  USING (public.is_admin());
 
 -- 9.5 ORDER_ITEMS
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
@@ -741,16 +797,19 @@ CREATE POLICY "order_items_insert_policy"
   ON public.order_items FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "order_items_delete_admin" ON public.order_items;
+CREATE POLICY "order_items_delete_admin"
+  ON public.order_items FOR DELETE
+  USING (public.is_admin());
+
 -- 9.6 DRIVER_LOCATIONS
 ALTER TABLE public.driver_locations ENABLE ROW LEVEL SECURITY;
 
--- Cualquier usuario puede leer la posición para ver la moto en el mapa en vivo
 DROP POLICY IF EXISTS "driver_locations_select_public" ON public.driver_locations;
 CREATE POLICY "driver_locations_select_public"
   ON public.driver_locations FOR SELECT
   USING (true);
 
--- Solo el repartidor dueño de su registro puede actualizar su propia ubicación
 DROP POLICY IF EXISTS "driver_locations_modify_own" ON public.driver_locations;
 CREATE POLICY "driver_locations_modify_own"
   ON public.driver_locations FOR ALL
@@ -794,8 +853,8 @@ BEGIN
 END $$;
 
 -- ==============================================================================
--- 11. SEED INICIAL: CONFIGURACIÓN DE TIENDA Y 9 LÍQUIDOS REALES
--- (SIN USUARIOS DEMO NI CONTRASEÑAS EN TEXTO PLANO)
+-- 11. SEED INICIAL: TIENDA OFICIAL Y PRODUCTOS REALES AGREGADOS POR EL DUEÑO
+-- (ELIMINA LOS 9 LÍQUIDOS ANTIGUOS Y CARGA LOS PRODUCTOS NUEVOS EN BASE DE DATOS)
 -- ==============================================================================
 
 -- 11.1 Tienda física (Colmado Noadia, Loma de Cabrera)
@@ -808,7 +867,9 @@ INSERT INTO public.store_config (
   phone,
   whatsapp,
   bank_account_info,
-  is_open
+  is_open,
+  points_per_redemption,
+  redemptions_enabled
 ) VALUES (
   1,
   'BLACK VAPE • Colmado Noadia',
@@ -818,6 +879,8 @@ INSERT INTO public.store_config (
   '8092104901',
   '8092104901',
   'Banreservas / Popular • Titular: Noadia Claribel (Colmado Noadia) • WhatsApp Comprobante: 809-210-4901',
+  true,
+  1000,
   true
 )
 ON CONFLICT (id) DO UPDATE
@@ -830,13 +893,45 @@ SET name = EXCLUDED.name,
     bank_account_info = EXCLUDED.bank_account_info,
     updated_at = now();
 
--- Eliminar cualquier pedido de demostración previo si existiera
+-- 11.2 Limpiar pedidos de demostración y los 9 líquidos antiguos
 DELETE FROM public.orders WHERE id IN ('ORD-700', 'ORD-701', 'ORD-702', 'ORD-901', 'ORD-902');
 
--- 11.2 Los 9 Líquidos Oficiales
+UPDATE public.order_items
+SET product_id = NULL
+WHERE product_id IN (
+  'prod-horny-ice-mint',
+  'prod-mistiq-melon',
+  'prod-pod-juice-energy',
+  'prod-pop-big-apple',
+  'prod-pop-blueberry-lemonade',
+  'prod-pop-grape',
+  'prod-pop-mango-dragon-fruit',
+  'prod-pop-mango-strawberry',
+  'prod-pop-strawberry-watermelon',
+  'prod-vape-puff-plus',
+  'prod-vape-caliburn-gk2'
+);
+
+DELETE FROM public.products
+WHERE id IN (
+  'prod-horny-ice-mint',
+  'prod-mistiq-melon',
+  'prod-pod-juice-energy',
+  'prod-pop-big-apple',
+  'prod-pop-blueberry-lemonade',
+  'prod-pop-grape',
+  'prod-pop-mango-dragon-fruit',
+  'prod-pop-mango-strawberry',
+  'prod-pop-strawberry-watermelon',
+  'prod-vape-puff-plus',
+  'prod-vape-caliburn-gk2'
+);
+
+-- 11.3 Cargar los nuevos productos reales en la base de datos
 INSERT INTO public.products (
   id,
   name,
+  product_type,
   flavor_category,
   nicotine_mg,
   image_url,
@@ -845,137 +940,53 @@ INSERT INTO public.products (
   price_full_tank,
   price_half_tank,
   description,
+  variants,
   is_active
 ) VALUES
 (
-  'prod-horny-ice-mint',
-  'Horny Flava Ice Mint Bubblegum',
-  'Mentolados',
-  35,
-  '/liquidos/horny-flava-ice-mint-bubblegum-120ml-liquids-liquids-melca-distro-605_500x.webp',
-  40,
-  20.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Delicioso chicle dulce con una intensa explosión helada de menta glacial.',
-  true
-),
-(
-  'prod-mistiq-melon',
-  'Mistiq Flava Melón Ice',
+  'prod-1793903205129',
+  'La popy',
+  'liquido',
   'Frutales',
-  20,
-  '/liquidos/mistiq-flava-melon-120ml-liquids-liquids-melca-distro-899_500x.webp',
-  35,
-  22.00,
+  70,
+  '/productos/la-popy.jpg',
+  29,
+  850.00,
   100.00,
   50.00,
-  'Recarga de tanque: Pulpa de melón cantaloupe dulce y jugosa con un toque escarchado característico.',
+  'La popy 70mg nicotina',
+  '[]'::jsonb,
   true
 ),
 (
-  'prod-pod-juice-energy',
-  'Pod Juice Salt Energy Freeze',
-  'Bebidas',
-  55,
-  '/liquidos/pod-juice-salt-energy-freeze-30ml-55mg-liquids-juice-liquids-melca-distro-438_500x.webp',
-  25,
-  25.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Electrizante sabor a bebida energética cítrica con efecto freeze polar intenso.',
-  true
-),
-(
-  'prod-pop-big-apple',
-  'Pop Iced Big Apple',
-  'Frutales',
-  35,
-  '/liquidos/pop-iced-big-apple-100ml-liquids-liquids-pop-vapors-melca-distro-934_500x.webp',
-  30,
-  20.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Manzana roja crujiente con jugo helado para caladas refrescantes.',
-  true
-),
-(
-  'prod-pop-blueberry-lemonade',
-  'Pop Iced Blueberry Lemonade',
-  'Bebidas',
-  35,
-  '/liquidos/pop-iced-blueberry-lemonade-100ml-liquids-liquids-pop-vapors-melca-distro-958_500x.webp',
-  28,
-  22.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Limonada frappé recién exprimida con moras azules silvestres.',
-  true
-),
-(
-  'prod-pop-grape',
-  'Pop Iced Grape',
-  'Frutales',
-  50,
-  '/liquidos/pop-iced-grape-100ml-liquids-liquids-pop-vapors-melca-distro-444_500x.webp',
-  32,
-  20.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Racimo de uvas moradas dulces congeladas en nitrógeno.',
-  true
-),
-(
-  'prod-pop-mango-dragon-fruit',
-  'Pop Iced Mango Dragon Fruit',
-  'Frutales',
-  35,
-  '/liquidos/pop-iced-mango-dragon-fruit-100ml-liquids-liquids-pop-vapors-melca-distro-892_500x.webp',
-  30,
-  22.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Exótica pitahaya rosa con mango maduro caribeño y toque mentol.',
-  true
-),
-(
-  'prod-pop-mango-strawberry',
-  'Pop Iced Mango Strawberry',
-  'Frutales',
-  35,
-  '/liquidos/pop-iced-mango-strawberry-100ml-liquids-fresa-liquids-pop-vapors-melca-distro-715_500x.webp',
-  30,
-  22.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Mango carnoso dulce y fresas silvestres en un torbellino frío.',
-  true
-),
-(
-  'prod-pop-strawberry-watermelon',
-  'Pop Iced Strawberry Watermelon',
-  'Frutales',
-  50,
-  '/liquidos/pop-iced-strawberry-watermelon-100ml-liquids-liquids-pop-vapors-melca-distro-629_500x.webp',
-  26,
-  24.00,
-  100.00,
-  50.00,
-  'Recarga de tanque: Dúo veraniego de fresa madura y sandía jugosa con cristales de hielo.',
+  'prod-1793923232176',
+  'MUHA MEDS',
+  'vape',
+  'Equipos Vape',
+  0,
+  '/productos/muha-meds-main.jpg',
+  2,
+  3500.00,
+  3500.00,
+  3500.00,
+  'Equipo Vape disponible en múltiples colores. Agrega tu líquido favorito al instante.',
+  '[{"id":"var-1793923139032-0","colorName":"Negro","colorHex":"#18181b","imageUrl":"/productos/muha-meds-var-0.jpg","stockUnits":1},{"id":"var-1793923168792-1","colorName":"Negro","colorHex":"#18181b","imageUrl":"/productos/muha-meds-var-1.jpg","stockUnits":1}]'::jsonb,
   true
 )
 ON CONFLICT (id) DO UPDATE
 SET name = EXCLUDED.name,
-  flavor_category = EXCLUDED.flavor_category,
-  nicotine_mg = EXCLUDED.nicotine_mg,
-  image_url = EXCLUDED.image_url,
-  stock_units = EXCLUDED.stock_units,
-  cost_price = EXCLUDED.cost_price,
-  price_full_tank = EXCLUDED.price_full_tank,
-  price_half_tank = EXCLUDED.price_half_tank,
-  description = EXCLUDED.description,
-  is_active = EXCLUDED.is_active,
-  updated_at = now();
+    product_type = EXCLUDED.product_type,
+    flavor_category = EXCLUDED.flavor_category,
+    nicotine_mg = EXCLUDED.nicotine_mg,
+    image_url = EXCLUDED.image_url,
+    stock_units = EXCLUDED.stock_units,
+    cost_price = EXCLUDED.cost_price,
+    price_full_tank = EXCLUDED.price_full_tank,
+    price_half_tank = EXCLUDED.price_half_tank,
+    description = EXCLUDED.description,
+    variants = EXCLUDED.variants,
+    is_active = EXCLUDED.is_active,
+    updated_at = now();
 
 -- ==============================================================================
 -- 12. RPCs DE AUTENTICACIÓN SEGURA Y ADMINISTRACIÓN DE REPARTIDORES
@@ -1106,7 +1117,6 @@ END;
 $$;
 
 -- Función auxiliar para asignar el rol de administrador de forma segura
--- Permite ejecución desde el SQL Editor de Supabase (sin JWT) o por un Admin autenticado
 CREATE OR REPLACE FUNCTION public.make_user_admin(p_email text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1114,14 +1124,18 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_user_id uuid;
+  v_clean_email text;
   v_jwt_claims text;
 BEGIN
+  v_clean_email := lower(trim(COALESCE(p_email, '')));
   v_jwt_claims := COALESCE(current_setting('request.jwt.claims', true), '');
-  IF v_jwt_claims <> '' AND NOT public.is_admin() THEN
+  IF v_jwt_claims <> ''
+     AND NOT public.is_admin()
+     AND v_clean_email NOT IN ('noadiasclaribel.y2k@icloud.com', 'elrubio0880.0@gmail.com') THEN
     RAISE EXCEPTION 'Acceso denegado: Solo un administrador puede promover usuarios.';
   END IF;
 
-  SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(trim(p_email));
+  SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = v_clean_email;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'No se encontró ningún usuario con el correo % en auth.users.', p_email;
   END IF;
@@ -1132,7 +1146,7 @@ BEGIN
       updated_at = now()
   WHERE id = v_user_id;
 
-  RETURN jsonb_build_object('success', true, 'email', p_email, 'role', 'admin');
+  RETURN jsonb_build_object('success', true, 'email', v_clean_email, 'role', 'admin');
 END;
 $$;
 
@@ -1140,20 +1154,7 @@ $$;
 -- 13. SISTEMA DE PUNTOS DE LEALTAD, CANJES Y RIFAS CON RULETA
 -- ==============================================================================
 
--- 13.1 Ampliación de columnas en profiles, store_config y orders
-ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS points_balance integer NOT NULL DEFAULT 0 CHECK (points_balance >= 0);
-
-ALTER TABLE public.store_config
-  ADD COLUMN IF NOT EXISTS points_per_redemption integer NOT NULL DEFAULT 1000 CHECK (points_per_redemption > 0),
-  ADD COLUMN IF NOT EXISTS redemptions_enabled boolean NOT NULL DEFAULT true;
-
-ALTER TABLE public.orders
-  ADD COLUMN IF NOT EXISTS order_type text NOT NULL DEFAULT 'regular' CHECK (order_type IN ('regular', 'canje')),
-  ADD COLUMN IF NOT EXISTS points_redeemed integer NOT NULL DEFAULT 0 CHECK (points_redeemed >= 0),
-  ADD COLUMN IF NOT EXISTS redemption_id uuid;
-
--- 13.2 Historial y Auditoría de Movimientos de Puntos (Point Transactions)
+-- 13.1 Historial y Auditoría de Movimientos de Puntos (Point Transactions)
 CREATE TABLE IF NOT EXISTS public.point_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -1182,13 +1183,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_point_transactions_order_accrual
 CREATE INDEX IF NOT EXISTS idx_point_transactions_user
   ON public.point_transactions(user_id, created_at DESC);
 
--- 13.3 Solicitudes y Registro de Canjes (Redemptions)
+-- 13.2 Solicitudes y Registro de Canjes (Redemptions)
 CREATE TABLE IF NOT EXISTS public.redemptions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   user_name text NOT NULL,
   user_phone text NOT NULL,
-  product_id text NOT NULL REFERENCES public.products(id),
+  product_id text REFERENCES public.products(id) ON DELETE SET NULL,
   portion text NOT NULL DEFAULT 'tanque_lleno' CHECK (portion IN ('tanque_lleno', 'mitad')),
   points_cost integer NOT NULL CHECK (points_cost > 0),
   delivery_address_note text,
@@ -1205,10 +1206,20 @@ CREATE TABLE IF NOT EXISTS public.redemptions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+DO $$
+BEGIN
+  ALTER TABLE public.redemptions ALTER COLUMN product_id DROP NOT NULL;
+  ALTER TABLE public.redemptions DROP CONSTRAINT IF EXISTS redemptions_product_id_fkey;
+  ALTER TABLE public.redemptions
+    ADD CONSTRAINT redemptions_product_id_fkey
+    FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_redemptions_status ON public.redemptions(status);
 CREATE INDEX IF NOT EXISTS idx_redemptions_user ON public.redemptions(user_id, created_at DESC);
 
--- 13.4 Rifas y Sorteos (Raffles)
+-- 13.3 Rifas y Sorteos (Raffles)
 CREATE TABLE IF NOT EXISTS public.raffles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -1229,7 +1240,7 @@ CREATE TABLE IF NOT EXISTS public.raffles (
 
 CREATE INDEX IF NOT EXISTS idx_raffles_status ON public.raffles(status);
 
--- 13.5 Participantes de Rifas
+-- 13.4 Participantes de Rifas
 CREATE TABLE IF NOT EXISTS public.raffle_participants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   raffle_id uuid NOT NULL REFERENCES public.raffles(id) ON DELETE CASCADE,
@@ -1245,7 +1256,7 @@ CREATE TABLE IF NOT EXISTS public.raffle_participants (
 
 CREATE INDEX IF NOT EXISTS idx_raffle_participants_raffle ON public.raffle_participants(raffle_id);
 
--- 13.6 RLS para tablas de lealtad y rifas
+-- 13.5 RLS para tablas de lealtad y rifas
 ALTER TABLE public.point_transactions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Lectura de transacciones de puntos propias o admin" ON public.point_transactions;
 CREATE POLICY "Lectura de transacciones de puntos propias o admin" ON public.point_transactions FOR SELECT USING (auth.uid() = user_id OR public.is_admin());
@@ -1272,7 +1283,7 @@ CREATE POLICY "Lectura de participantes de rifas" ON public.raffle_participants 
 DROP POLICY IF EXISTS "Solo admin gestiona participantes" ON public.raffle_participants;
 CREATE POLICY "Solo admin gestiona participantes" ON public.raffle_participants FOR ALL USING (public.is_admin());
 
--- 13.7 RPC: Marcar Pedido Entregado con Acreditación Automática de Puntos
+-- 13.6 RPC: Marcar Pedido Entregado con Descuento de Stock (General + Variante) y Puntos
 CREATE OR REPLACE FUNCTION public.mark_order_delivered(p_order_id text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1281,6 +1292,9 @@ AS $$
 DECLARE
   v_order public.orders%ROWTYPE;
   v_item record;
+  v_prod public.products%ROWTYPE;
+  v_new_variants jsonb;
+  v_var_elem jsonb;
   v_points_to_grant integer := 0;
   v_new_balance integer := 0;
   v_already_granted boolean := false;
@@ -1298,17 +1312,40 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'message', 'El pedido ya estaba marcado como entregado.');
   END IF;
 
-  -- Descontar stock agrupado por producto
+  -- Descontar stock por ítem y por variante si aplica
   FOR v_item IN
-    SELECT product_id, SUM(quantity)::integer AS total_qty
+    SELECT product_id, variant_id, quantity
     FROM public.order_items
-    WHERE order_id = p_order_id
-    GROUP BY product_id
+    WHERE order_id = p_order_id AND product_id IS NOT NULL
   LOOP
-    UPDATE public.products
-    SET stock_units = GREATEST(0, stock_units - v_item.total_qty),
-        updated_at = now()
-    WHERE id = v_item.product_id;
+    SELECT * INTO v_prod FROM public.products WHERE id = v_item.product_id FOR UPDATE;
+    IF FOUND THEN
+      IF v_item.variant_id IS NOT NULL AND jsonb_typeof(v_prod.variants) = 'array' AND jsonb_array_length(v_prod.variants) > 0 THEN
+        v_new_variants := '[]'::jsonb;
+        FOR v_var_elem IN SELECT * FROM jsonb_array_elements(v_prod.variants)
+        LOOP
+          IF (v_var_elem->>'id') = v_item.variant_id THEN
+            v_var_elem := jsonb_set(
+              v_var_elem,
+              '{stockUnits}',
+              to_jsonb(GREATEST(0, COALESCE((v_var_elem->>'stockUnits')::integer, 0) - v_item.quantity))
+            );
+          END IF;
+          v_new_variants := v_new_variants || jsonb_build_array(v_var_elem);
+        END LOOP;
+
+        UPDATE public.products
+        SET stock_units = GREATEST(0, stock_units - v_item.quantity),
+            variants = v_new_variants,
+            updated_at = now()
+        WHERE id = v_item.product_id;
+      ELSE
+        UPDATE public.products
+        SET stock_units = GREATEST(0, stock_units - v_item.quantity),
+            updated_at = now()
+        WHERE id = v_item.product_id;
+      END IF;
+    END IF;
   END LOOP;
 
   -- Otorgar puntos de lealtad si es pedido regular de cliente registrado
@@ -1341,7 +1378,7 @@ BEGIN
           'acumulacion_pedido',
           v_points_to_grant,
           v_new_balance,
-          format('Puntos ganados por pedido entregado %s ($%s en líquido dispensado)', p_order_id, v_order.subtotal_liquid)
+          format('Puntos ganados por pedido entregado %s ($%s en productos)', p_order_id, v_order.subtotal_liquid)
         );
       END IF;
     END IF;
@@ -1361,7 +1398,7 @@ BEGIN
   VALUES (
     p_order_id,
     'entregado',
-    format('Líquidos dispensados y cobrados. Stock descontado. Puntos otorgados: %s.', v_points_to_grant)
+    format('Pedido dispensado y cobrado. Stock descontado. Puntos otorgados: %s.', v_points_to_grant)
   );
 
   RETURN jsonb_build_object(
@@ -1373,7 +1410,7 @@ BEGIN
 END;
 $$;
 
--- 13.8 RPC: Revertir Pedido Entregado
+-- 13.7 RPC: Revertir Pedido Entregado
 CREATE OR REPLACE FUNCTION public.revert_delivered_order(
   p_order_id text,
   p_reason text
@@ -1404,7 +1441,7 @@ BEGIN
   FOR v_item IN
     SELECT product_id, SUM(quantity)::integer AS total_qty
     FROM public.order_items
-    WHERE order_id = p_order_id
+    WHERE order_id = p_order_id AND product_id IS NOT NULL
     GROUP BY product_id
   LOOP
     UPDATE public.products
@@ -1455,7 +1492,7 @@ BEGIN
 END;
 $$;
 
--- 13.9 RPC: Solicitud de Canje por Cliente
+-- 13.8 RPC: Solicitud de Canje por Cliente
 CREATE OR REPLACE FUNCTION public.request_redemption_secure(
   p_product_id text,
   p_portion text,
@@ -1498,11 +1535,11 @@ BEGIN
 
   SELECT * INTO v_prod FROM public.products WHERE id = p_product_id AND is_active = true;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'El líquido seleccionado no está disponible en catálogo.';
+    RAISE EXCEPTION 'El producto seleccionado no está disponible en catálogo.';
   END IF;
 
   IF v_prod.stock_units < 1 THEN
-    RAISE EXCEPTION 'No hay stock disponible de este líquido para canje.';
+    RAISE EXCEPTION 'No hay stock disponible de este producto para canje.';
   END IF;
 
   INSERT INTO public.redemptions (
@@ -1538,7 +1575,7 @@ BEGIN
 END;
 $$;
 
--- 13.10 RPC: Aprobación de Canje por Admin
+-- 13.9 RPC: Aprobación de Canje por Admin
 CREATE OR REPLACE FUNCTION public.approve_redemption_admin(
   p_redemption_id uuid
 )
@@ -1580,7 +1617,7 @@ BEGIN
 
   UPDATE public.profiles
   SET points_balance = points_balance - v_redemption.points_cost,
-      updated_at = now()
+       updated_at = now()
   WHERE id = v_redemption.user_id
   RETURNING points_balance INTO v_new_balance;
 
@@ -1596,7 +1633,7 @@ BEGIN
     'canje_aprobado',
     -v_redemption.points_cost,
     v_new_balance,
-    format('Canje aprobado: 1 llenada gratis de %s (-%s pts)', v_prod.name, v_redemption.points_cost),
+    format('Canje aprobado: 1 llenada gratis de %s (-%s pts)', COALESCE(v_prod.name, 'Líquido'), v_redemption.points_cost),
     auth.uid()
   );
 
@@ -1640,7 +1677,7 @@ BEGIN
     v_redemption.destination_lat,
     v_redemption.destination_lng,
     0.00,
-    v_prod.cost_price,
+    COALESCE(v_prod.cost_price, 0.00),
     v_distance_km,
     v_delivery_fee,
     v_delivery_fee,
@@ -1651,13 +1688,14 @@ BEGIN
     v_redemption.points_cost,
     v_redemption.id,
     'efectivo',
-    format('CANJE DE PUNTOS: 1x %s gratis. Tarifa de delivery estándar.', v_prod.name)
+    format('CANJE DE PUNTOS: 1x %s gratis. Tarifa de delivery estándar.', COALESCE(v_prod.name, 'Líquido'))
   );
 
   INSERT INTO public.order_items (
     order_id,
     product_id,
     product_name,
+    product_type,
     portion,
     unit_price,
     cost_price,
@@ -1665,10 +1703,11 @@ BEGIN
   ) VALUES (
     v_order_id,
     v_prod.id,
-    format('%s (Llenada Gratis x Puntos)', v_prod.name),
+    format('%s (Llenada Gratis x Puntos)', COALESCE(v_prod.name, 'Líquido')),
+    COALESCE(v_prod.product_type, 'liquido'),
     v_redemption.portion,
     0.00,
-    v_prod.cost_price,
+    COALESCE(v_prod.cost_price, 0.00),
     1
   );
 
@@ -1692,7 +1731,7 @@ BEGIN
 END;
 $$;
 
--- 13.11 RPC: Rechazo o Cancelación de Canje
+-- 13.10 RPC: Rechazo o Cancelación de Canje
 CREATE OR REPLACE FUNCTION public.reject_or_cancel_redemption(
   p_redemption_id uuid,
   p_reason text
@@ -1760,7 +1799,7 @@ BEGIN
 END;
 $$;
 
--- 13.12 RPC: Ajuste Manual y Reset de Puntos por Admin
+-- 13.11 RPC: Ajuste Manual y Reset de Puntos por Admin
 CREATE OR REPLACE FUNCTION public.adjust_user_points_admin(
   p_user_id uuid,
   p_delta_points integer,
@@ -1888,7 +1927,7 @@ BEGIN
 END;
 $$;
 
--- 13.13 RPCs: Sincronización y Sorteo de Rifas
+-- 13.12 RPCs: Sincronización y Sorteo de Rifas
 CREATE OR REPLACE FUNCTION public.sync_raffle_participants_admin(
   p_raffle_id uuid
 )
@@ -2036,105 +2075,190 @@ END;
 $$;
 
 -- ==============================================================================
--- 14. REGISTRO AUTOMÁTICO DE ADMINISTRADOR PRINCIPAL (NOADIA CLARIBEL)
+-- 14. REGISTRO AUTOMÁTICO DE ADMINISTRADORES OFICIALES Y REPARTIDORES ACTIVOS
 -- ==============================================================================
 DO $$
 DECLARE
-  v_email text := 'noadiasclaribel.y2k@icloud.com';
-  v_password text := 'blackVape2026';
-  v_name text := 'Noadia Claribel (Admin)';
-  v_phone text := '8092104901';
+  v_admin record;
+  v_driver record;
   v_user_id uuid;
 BEGIN
-  SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(trim(v_email));
+  -- 14.1 Administradores Oficiales (Noadia Claribel y Administrador Black Vape)
+  FOR v_admin IN
+    SELECT * FROM (VALUES
+      ('noadiasclaribel.y2k@icloud.com', 'blackVape2026', 'Noadia Claribel (Admin)', '8092104901'),
+      ('elrubio0880.0@gmail.com', 'BlackVape2026*', 'Administrador Black Vape', '8092104901')
+    ) AS t(email, password, name, phone)
+  LOOP
+    SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(trim(v_admin.email));
 
-  IF v_user_id IS NULL THEN
-    v_user_id := gen_random_uuid();
+    IF v_user_id IS NULL THEN
+      v_user_id := gen_random_uuid();
 
-    INSERT INTO auth.users (
-      id,
-      instance_id,
-      email,
-      encrypted_password,
-      email_confirmed_at,
-      confirmation_token,
-      recovery_token,
-      email_change_token_new,
-      email_change,
-      email_change_token_current,
-      reauthentication_token,
-      phone_change,
-      phone_change_token,
-      raw_app_meta_data,
-      raw_user_meta_data,
-      aud,
-      role,
-      created_at,
-      updated_at
-    ) VALUES (
-      v_user_id,
-      '00000000-0000-0000-0000-000000000000',
-      lower(trim(v_email)),
-      crypt(v_password, gen_salt('bf')),
-      now(),
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      jsonb_build_object('name', v_name, 'phone', v_phone, 'role', 'admin'),
-      'authenticated',
-      'authenticated',
-      now(),
-      now()
-    );
+      INSERT INTO auth.users (
+        id,
+        instance_id,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change,
+        email_change_token_current,
+        reauthentication_token,
+        phone_change,
+        phone_change_token,
+        raw_app_meta_data,
+        raw_user_meta_data,
+        aud,
+        role,
+        created_at,
+        updated_at
+      ) VALUES (
+        v_user_id,
+        '00000000-0000-0000-0000-000000000000',
+        lower(trim(v_admin.email)),
+        crypt(v_admin.password, gen_salt('bf')),
+        now(),
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('name', v_admin.name, 'phone', v_admin.phone, 'role', 'admin'),
+        'authenticated',
+        'authenticated',
+        now(),
+        now()
+      );
 
-    INSERT INTO auth.identities (
-      id,
-      user_id,
-      provider_id,
-      identity_data,
-      provider,
-      last_sign_in_at,
-      created_at,
-      updated_at
-    ) VALUES (
-      gen_random_uuid(),
-      v_user_id,
-      v_user_id::text,
-      jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(v_email)), 'email_verified', true),
-      'email',
-      now(),
-      now(),
-      now()
-    );
-  ELSE
-    UPDATE auth.users
-    SET encrypted_password = crypt(v_password, gen_salt('bf')),
-        email_confirmed_at = COALESCE(email_confirmed_at, now()),
-        confirmation_token = COALESCE(confirmation_token, ''),
-        recovery_token = COALESCE(recovery_token, ''),
-        email_change_token_new = COALESCE(email_change_token_new, ''),
-        email_change = COALESCE(email_change, ''),
-        email_change_token_current = COALESCE(email_change_token_current, ''),
-        reauthentication_token = COALESCE(reauthentication_token, ''),
-        phone_change = COALESCE(phone_change, ''),
-        phone_change_token = COALESCE(phone_change_token, ''),
-        raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', 'admin'),
-        updated_at = now()
-    WHERE id = v_user_id;
-  END IF;
+      INSERT INTO auth.identities (
+        id,
+        user_id,
+        provider_id,
+        identity_data,
+        provider,
+        last_sign_in_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        gen_random_uuid(),
+        v_user_id,
+        v_user_id::text,
+        jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(v_admin.email)), 'email_verified', true),
+        'email',
+        now(),
+        now(),
+        now()
+      );
+    ELSE
+      UPDATE auth.users
+      SET encrypted_password = crypt(v_admin.password, gen_salt('bf')),
+          email_confirmed_at = COALESCE(email_confirmed_at, now()),
+          raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', 'admin', 'name', v_admin.name),
+          updated_at = now()
+      WHERE id = v_user_id;
+    END IF;
 
-  INSERT INTO public.profiles (id, role, name, phone, is_active)
-  VALUES (v_user_id, 'admin', v_name, v_phone, true)
-  ON CONFLICT (id) DO UPDATE
-  SET role = 'admin',
-      is_active = true,
-      updated_at = now();
+    INSERT INTO public.profiles (id, role, name, phone, is_active)
+    VALUES (v_user_id, 'admin', v_admin.name, v_admin.phone, true)
+    ON CONFLICT (id) DO UPDATE
+    SET role = 'admin',
+        name = EXCLUDED.name,
+        is_active = true,
+        updated_at = now();
+  END LOOP;
+
+  -- 14.2 Repartidores Reales Activos (Yanet y Jose)
+  FOR v_driver IN
+    SELECT * FROM (VALUES
+      ('yanet@repartidor.blackvape.local', 'yanet123', 'Yanet', '8492763532', 'yanet'),
+      ('jose@repartidor.blackvape.local', 'jose123', 'Jose', '8092104901', 'jose')
+    ) AS t(email, password, name, phone, username)
+  LOOP
+    SELECT id INTO v_user_id FROM auth.users WHERE lower(email) = lower(trim(v_driver.email));
+
+    IF v_user_id IS NULL THEN
+      v_user_id := gen_random_uuid();
+
+      INSERT INTO auth.users (
+        id,
+        instance_id,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change,
+        email_change_token_current,
+        reauthentication_token,
+        phone_change,
+        phone_change_token,
+        raw_app_meta_data,
+        raw_user_meta_data,
+        aud,
+        role,
+        created_at,
+        updated_at
+      ) VALUES (
+        v_user_id,
+        '00000000-0000-0000-0000-000000000000',
+        lower(trim(v_driver.email)),
+        crypt(v_driver.password, gen_salt('bf')),
+        now(),
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('name', v_driver.name, 'phone', v_driver.phone, 'username', v_driver.username, 'role', 'delivery'),
+        'authenticated',
+        'authenticated',
+        now(),
+        now()
+      );
+
+      INSERT INTO auth.identities (
+        id,
+        user_id,
+        provider_id,
+        identity_data,
+        provider,
+        last_sign_in_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        gen_random_uuid(),
+        v_user_id,
+        v_user_id::text,
+        jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(v_driver.email)), 'email_verified', true),
+        'email',
+        now(),
+        now(),
+        now()
+      );
+    END IF;
+
+    INSERT INTO public.profiles (id, role, name, phone, username, is_active)
+    VALUES (v_user_id, 'delivery', v_driver.name, v_driver.phone, v_driver.username, true)
+    ON CONFLICT (id) DO UPDATE
+    SET role = 'delivery',
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone,
+        username = EXCLUDED.username,
+        is_active = true,
+        updated_at = now();
+  END LOOP;
 
   -- Normalizar columnas de texto en auth.users para evitar Error 500 en GoTrue
   UPDATE auth.users
@@ -2253,6 +2377,3 @@ BEGIN
   RETURN jsonb_build_object('success', true, 'user_id', v_user_id, 'email', v_email);
 END;
 $$;
-
-
-

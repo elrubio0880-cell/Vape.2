@@ -1,6 +1,6 @@
 {
-  "summary": "Plan de arquitectura y experiencia de usuario para el módulo de Equipos Vape con galería de variantes por color, control de stock individual por color, pestañas separadas en el catálogo y ventana emergente inmediata de sugerencia de líquido (Cross-Sell).",
-  "updatedAt": "2026-11-05T03:19:19.598722126Z",
+  "summary": "Plan de implementación para el motor WebGL de humo volumétrico realista (Domain-Warped Curl Fluid Shader) con humo blanco realista y reflejos neón sutiles, flotando desde abajo y reaccionando con caladas al agregar productos o pulsar el botón.",
+  "updatedAt": "2026-11-06T06:19:17.896338275Z",
   "requestFeedback": true,
   "userFacing": true
 }

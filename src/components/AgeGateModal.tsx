@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldAlert, CheckCircle2, XCircle, Flame, Wind } from 'lucide-react';
 import { setStoredAgeVerified, playNotificationSound } from '../utils/storage';
+import vapeSmokeAtmosphereImg from '../assets/images/vape_smoke_atmosphere_1793233367830.jpg';
 
 interface AgeGateModalProps {
   onVerified: () => void;
@@ -21,6 +22,10 @@ export const AgeGateModal: React.FC<AgeGateModalProps> = ({ onVerified }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-35 pointer-events-none"
+        style={{ backgroundImage: `url(${vapeSmokeAtmosphereImg})` }}
+      />
       {/* Atmospheric ambient radiant lighting with zero hard edges */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-500/15 rounded-full blur-[140px] pointer-events-none" />

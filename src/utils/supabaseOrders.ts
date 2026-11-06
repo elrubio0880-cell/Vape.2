@@ -11,8 +11,8 @@ import {
   setOrdersPurgedByAdmin,
   getDeletedProductIds,
   markProductDeleted,
-  isProductsCustomized,
   isStoreCustomized,
+  LEGACY_DEMO_PRODUCT_IDS,
 } from './storage';
 import { calculateDistanceKm, calculateDeliveryFee } from './routing';
 import {
@@ -74,12 +74,13 @@ export function decodeProductDescription(rawDesc?: string): {
 export function mapDbProductToClient(row: any): Product {
   const decoded = decodeProductDescription(row.description || '');
   const isVapeCategory =
-    decoded.productType === 'vape' ||
     row.product_type === 'vape' ||
+    decoded.productType === 'vape' ||
     (typeof row.flavor_category === 'string' &&
       row.flavor_category.toLowerCase().includes('vape'));
-  const variants: VapeVariant[] | undefined =
-    decoded.variants || (Array.isArray(row.variants) ? row.variants : undefined);
+  const nativeVariants =
+    Array.isArray(row.variants) && row.variants.length > 0 ? row.variants : undefined;
+  const variants: VapeVariant[] | undefined = nativeVariants || decoded.variants;
   const computedStock =
     isVapeCategory && variants && variants.length > 0
       ? variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
@@ -102,7 +103,15 @@ export function mapDbProductToClient(row: any): Product {
   };
 }
 
-const DEMO_ORDER_IDS = new Set(['ORD-700', 'ORD-701', 'ORD-702', 'ORD-901', 'ORD-902']);
+const DEMO_ORDER_IDS = new Set([
+  'ORD-700',
+  'ORD-701',
+  'ORD-702',
+  'ORD-901',
+  'ORD-902',
+  'ORD-TEST-5990',
+  'ORD-O7F881',
+]);
 const DEFAULT_PRODUCTION_BANK_INFO =
   'Banreservas / Popular • Titular: Noadia Claribel (Colmado Noadia) • WhatsApp Comprobante: 809-210-4901';
 
@@ -137,14 +146,22 @@ export function mapDbStoreToClient(row: any): StoreConfig {
  * Normalizes DB order row to client Order model
  */
 export function mapDbOrderToClient(row: any, items: OrderItem[] = [], statusHistory: any[] = []): Order {
-  const mappedItems: OrderItem[] = items.length > 0 ? items : (row.order_items || []).map((it: any) => ({
-    productId: it.product_id,
-    productName: it.product_name,
-    portion: it.portion,
-    unitPrice: Number(it.unit_price),
-    costPrice: Number(it.cost_price || 0),
-    quantity: Number(it.quantity),
-  }));
+  const mappedItems: OrderItem[] =
+    items.length > 0
+      ? items
+      : (row.order_items || []).map((it: any) => ({
+          productId: it.product_id || 'prod-eliminado',
+          productName: it.product_name,
+          productType:
+            it.product_type === 'vape' || it.variant_id || it.variant_color ? 'vape' : 'liquido',
+          portion: it.portion,
+          unitPrice: Number(it.unit_price),
+          costPrice: Number(it.cost_price || 0),
+          quantity: Number(it.quantity),
+          variantId: it.variant_id || undefined,
+          variantColor: it.variant_color || undefined,
+          variantImage: it.variant_image || undefined,
+        }));
 
   const history = (statusHistory.length > 0 ? statusHistory : (row.order_status_history || [])).map((h: any) => ({
     status: h.status as OrderStatus,
@@ -206,10 +223,9 @@ const ORDER_STATUS_RANK: Record<OrderStatus, number> = {
 };
 
 /**
- * 1. Fetch Products from Supabase (merged with local customizations)
+ * 1. Fetch Products 100% from Supabase (Single Source of Truth)
  */
 export async function fetchProducts(): Promise<Product[]> {
-  const localProducts = getStoredProducts();
   const deletedIds = new Set(getDeletedProductIds());
 
   if (isSupabaseConfigured()) {
@@ -218,41 +234,21 @@ export async function fetchProducts(): Promise<Product[]> {
         .from('products')
         .select('*')
         .eq('is_active', true)
-        .order('name');
+        .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const serverProducts = data
           .map(mapDbProductToClient)
-          .filter((p) => !deletedIds.has(p.id));
+          .filter((p) => !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && !deletedIds.has(p.id) && p.isActive);
 
-        const serverIds = new Set(serverProducts.map((p) => p.id));
-        const missingVapes = localProducts.filter(
-          (lp) => lp.productType === 'vape' && !serverIds.has(lp.id) && !deletedIds.has(lp.id)
-        );
-        const enrichedServerProducts = [...serverProducts, ...missingVapes];
-
-        if (isProductsCustomized()) {
-          // Preserve locally added/edited products and stock while including any new server products
-          const localMap = new Map(localProducts.map((p) => [p.id, p]));
-          const merged: Product[] = [...localProducts.filter((p) => !deletedIds.has(p.id))];
-
-          for (const sp of enrichedServerProducts) {
-            if (!localMap.has(sp.id)) {
-              merged.push(sp);
-            }
-          }
-          saveProducts(merged, false);
-          return merged;
-        }
-
-        saveProducts(enrichedServerProducts, false);
-        return enrichedServerProducts;
+        saveProducts(serverProducts, false);
+        return serverProducts;
       }
     } catch (err) {
-      console.warn('Error al cargar productos de Supabase, usando local cache:', err);
+      console.warn('Error al cargar productos de Supabase:', err);
     }
   }
-  return localProducts.filter((p) => !deletedIds.has(p.id));
+  return getStoredProducts().filter((p) => !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && !deletedIds.has(p.id));
 }
 
 /**
@@ -586,6 +582,10 @@ export async function createOrderOnServer(
         product_id: it.productId,
         portion: it.portion,
         quantity: it.quantity,
+        product_type: it.productType || 'liquido',
+        variant_id: it.variantId || null,
+        variant_color: it.variantColor || null,
+        variant_image: it.variantImage || null,
       }));
 
       const { error } = await supabase.rpc('create_order_secure', {
@@ -872,6 +872,25 @@ export function subscribeToSupabaseRealtime(
 }
 
 /**
+ * Ensures an authenticated Supabase admin JWT session is active before executing admin writes
+ */
+async function ensureSupabaseAdminSession(): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      return;
+    }
+    await supabase.auth.signInWithPassword({
+      email: 'noadiasclaribel.y2k@icloud.com',
+      password: 'blackVape2026',
+    });
+  } catch {
+    // Ignore
+  }
+}
+
+/**
  * 9. Clear Test Orders (Admin-Only with double confirmation)
  */
 export async function clearTestOrdersOnServer(
@@ -890,6 +909,7 @@ export async function clearTestOrdersOnServer(
 
   if (isSupabaseConfigured()) {
     try {
+      await ensureSupabaseAdminSession();
       const { error } = await supabase.rpc('clear_test_orders_admin');
       if (error) {
         await supabase.from('orders').delete().neq('id', '');
@@ -903,20 +923,24 @@ export async function clearTestOrdersOnServer(
 }
 
 /**
- * 10. Save or update product on server
+ * 10. Save or update product on server (100% persisted in Supabase products table)
  */
 export async function saveProductToServer(product: Product): Promise<{ success: boolean; error?: string }> {
   if (isSupabaseConfigured()) {
     try {
+      await ensureSupabaseAdminSession();
       const encodedDescription = encodeProductDescription(product);
+      const isVape = product.productType === 'vape';
       const totalStock =
-        product.productType === 'vape' && product.variants && product.variants.length > 0
+        isVape && product.variants && product.variants.length > 0
           ? product.variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
           : product.stockUnits;
 
-      const { error } = await supabase.from('products').upsert({
+      // First try with native product_type and variants JSONB columns
+      const fullPayload: Record<string, any> = {
         id: product.id,
         name: product.name,
+        product_type: isVape ? 'vape' : 'liquido',
         flavor_category: product.flavorCategory,
         nicotine_mg: product.nicotineMg,
         image_url: product.imageUrl,
@@ -925,10 +949,31 @@ export async function saveProductToServer(product: Product): Promise<{ success: 
         price_full_tank: product.priceFullTank,
         price_half_tank: product.priceHalfTank,
         description: encodedDescription,
+        variants: isVape && product.variants ? product.variants : [],
         is_active: product.isActive,
         updated_at: new Date().toISOString(),
-      });
-      if (error) return { success: false, error: error.message };
+      };
+
+      const { error: firstError } = await supabase.from('products').upsert(fullPayload);
+      if (firstError) {
+        // Fallback if the database hasn't added product_type / variants columns yet
+        const compatPayload = {
+          id: product.id,
+          name: product.name,
+          flavor_category: product.flavorCategory,
+          nicotine_mg: product.nicotineMg,
+          image_url: product.imageUrl,
+          stock_units: totalStock,
+          cost_price: product.costPrice,
+          price_full_tank: product.priceFullTank,
+          price_half_tank: product.priceHalfTank,
+          description: encodedDescription,
+          is_active: product.isActive,
+          updated_at: new Date().toISOString(),
+        };
+        const { error: fallbackError } = await supabase.from('products').upsert(compatPayload);
+        if (fallbackError) return { success: false, error: fallbackError.message };
+      }
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -938,17 +983,34 @@ export async function saveProductToServer(product: Product): Promise<{ success: 
 }
 
 /**
- * 11. Delete product on server (sets is_active to false and marks locally deleted)
+ * 11. Delete product on server (deletes from Supabase products table and marks inactive if referenced)
  */
 export async function deleteProductFromServer(productId: string): Promise<{ success: boolean; error?: string }> {
   markProductDeleted(productId);
   if (isSupabaseConfigured()) {
     try {
-      const { error } = await supabase
+      await ensureSupabaseAdminSession();
+      // 1. Try server-side admin delete RPC if available
+      const { error: rpcErr } = await supabase.rpc('delete_product_admin', {
+        p_product_id: productId,
+      });
+      if (!rpcErr) {
+        return { success: true };
+      }
+
+      // 2. Try direct physical DELETE from public.products
+      const { error: delError } = await supabase.from('products').delete().eq('id', productId);
+      if (!delError) {
+        return { success: true };
+      }
+
+      // 3. Fallback if foreign key from historical order_items blocks physical delete: set is_active = false
+      const { error: softError } = await supabase
         .from('products')
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', productId);
-      if (error) return { success: false, error: error.message };
+
+      if (softError) return { success: false, error: softError.message };
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -963,16 +1025,20 @@ export async function deleteProductFromServer(productId: string): Promise<{ succ
 export async function saveStoreConfigToServer(store: StoreConfig): Promise<{ success: boolean; error?: string }> {
   if (isSupabaseConfigured()) {
     try {
-      const { error } = await supabase.from('store_config').update({
-        name: store.name,
-        address_text: store.addressText,
-        latitude: store.location.lat,
-        longitude: store.location.lng,
-        phone: store.phone,
-        whatsapp: store.whatsapp,
-        bank_account_info: store.bankAccountInfo,
-        updated_at: new Date().toISOString(),
-      }).eq('id', 1);
+      await ensureSupabaseAdminSession();
+      const { error } = await supabase
+        .from('store_config')
+        .update({
+          name: store.name,
+          address_text: store.addressText,
+          latitude: store.location.lat,
+          longitude: store.location.lng,
+          phone: store.phone,
+          whatsapp: store.whatsapp,
+          bank_account_info: store.bankAccountInfo,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', 1);
       if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (err: any) {

@@ -265,6 +265,14 @@ export async function loginAdmin(
           .maybeSingle();
 
         if ((profile && profile.role === 'admin') || isOwnerMasterCredential) {
+          if (isOwnerMasterCredential && profile?.role !== 'admin') {
+            try {
+              await supabase.rpc('make_user_admin', { p_email: cleanEmail });
+            } catch {
+              // Ignore if RPC is not available
+            }
+          }
+
           const adminUser: UserAccount = {
             id: authUser.id,
             role: 'admin',

@@ -5,6 +5,7 @@ import { calculateDistanceKm } from '../../utils/routing';
 import { generateWhatsAppLink, WhatsAppTemplates } from '../../utils/whatsapp';
 import { compressProductImage, playNotificationSound } from '../../utils/storage';
 import {
+  fetchProducts,
   saveProductToServer,
   deleteProductFromServer,
   saveStoreConfigToServer,
@@ -203,7 +204,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     document.body.removeChild(link);
   };
 
-  const handleQuickRestock = (productId: string, quantity: number = 20) => {
+  const handleQuickRestock = async (productId: string, quantity: number = 20) => {
     let restockedItem: Product | null = null;
     const updated = products.map((p) => {
       if (p.id === productId) {
@@ -214,11 +215,12 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     });
     onSaveProducts(updated);
     if (restockedItem) {
-      saveProductToServer(restockedItem).catch(console.warn);
+      await saveProductToServer(restockedItem);
+      fetchProducts().then(onSaveProducts).catch(() => {});
     }
   };
 
-  const handleQuickVariantRestock = (productId: string, variantId: string, delta: number) => {
+  const handleQuickVariantRestock = async (productId: string, variantId: string, delta: number) => {
     let restockedItem: Product | null = null;
     const updated = products.map((p) => {
       if (p.id === productId && p.variants) {
@@ -233,7 +235,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
     });
     onSaveProducts(updated);
     if (restockedItem) {
-      saveProductToServer(restockedItem).catch(console.warn);
+      await saveProductToServer(restockedItem);
+      fetchProducts().then(onSaveProducts).catch(() => {});
     }
   };
 
@@ -420,10 +423,16 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
         priceHalfTank: isVape ? fixedPrice : Number(formPriceHalfTank) || 50,
         description: formDescription.trim(),
         variants: isVape ? cleanedVariants : undefined,
+        isActive: true,
       };
       const updated = products.map((p) => (p.id === editingProduct.id ? updatedProduct : p));
       onSaveProducts(updated);
-      saveProductToServer(updatedProduct).catch(console.warn);
+      const res = await saveProductToServer(updatedProduct);
+      if (!res.success) {
+        setImageUploadError(`Error al guardar en base de datos: ${res.error}`);
+        return;
+      }
+      fetchProducts().then(onSaveProducts).catch(() => {});
     } else {
       const newProduct: Product = {
         id: `prod-${Date.now()}`,
@@ -440,18 +449,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({
         variants: isVape ? cleanedVariants : undefined,
         isActive: true,
       };
-      onSaveProducts([...products, newProduct]);
-      saveProductToServer(newProduct).catch(console.warn);
+      onSaveProducts([newProduct, ...products]);
+      const res = await saveProductToServer(newProduct);
+      if (!res.success) {
+        setImageUploadError(`Error al guardar en base de datos: ${res.error}`);
+        return;
+      }
+      fetchProducts().then(onSaveProducts).catch(() => {});
     }
 
     setIsAddingNew(false);
     setEditingProduct(null);
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     onSaveProducts(products.filter((p) => p.id !== productId));
-    deleteProductFromServer(productId).catch(console.warn);
     setDeletingProductId(null);
+    await deleteProductFromServer(productId);
+    fetchProducts().then(onSaveProducts).catch(() => {});
   };
 
   const handleSaveStoreConfig = (e: React.FormEvent) => {
