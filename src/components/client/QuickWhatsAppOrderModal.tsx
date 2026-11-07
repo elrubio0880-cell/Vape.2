@@ -39,10 +39,12 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
   onCreateOrder,
 }) => {
   const isVape = product.productType === 'vape';
+  const isAccessory = product.productType === 'accesorio';
+  const isUnit = isVape || isAccessory;
   const [portion, setPortion] = useState<PortionType>('tanque_lleno');
   const [quantity, setQuantity] = useState<number>(1);
   const [selectedVariant, setSelectedVariant] = useState<VapeVariant | undefined>(() => {
-    if (!isVape || !product.variants || product.variants.length === 0) return undefined;
+    if (!isUnit || !product.variants || product.variants.length === 0) return undefined;
     if (initialVariant) return initialVariant;
     return product.variants.find((v) => v.stockUnits > 0) || product.variants[0];
   });
@@ -69,13 +71,13 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
   const [detectedAddress, setDetectedAddress] = useState<string>('Loma de Cabrera, Dajabón');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const unitPrice = isVape
+  const unitPrice = isUnit
     ? product.priceFullTank
     : portion === 'tanque_lleno'
     ? product.priceFullTank
     : product.priceHalfTank;
   const maxStock =
-    isVape && selectedVariant ? selectedVariant.stockUnits : product.stockUnits;
+    isUnit && selectedVariant ? selectedVariant.stockUnits : product.stockUnits;
 
   const addonLiquidProduct = availableLiquids.find((l) => l.id === selectedAddonLiquidId);
   const addonLiquidPrice = addonLiquidProduct
@@ -164,11 +166,11 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
       {
         productId: product.id,
         productName:
-          isVape && selectedVariant
+          isUnit && selectedVariant
             ? `${product.name} (${selectedVariant.colorName})`
             : product.name,
-        productType: isVape ? 'vape' : 'liquido',
-        portion: isVape ? 'tanque_lleno' : portion,
+        productType: isAccessory ? 'accesorio' : isVape ? 'vape' : 'liquido',
+        portion: isUnit ? 'tanque_lleno' : portion,
         unitPrice,
         costPrice: product.costPrice,
         quantity,
@@ -255,12 +257,12 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
     // 2. Generate WhatsApp message with product photo, Google Maps link, and full details
     const msg = buildSingleProductWhatsAppMessage({
       productName: product.name,
-      productType: isVape ? 'vape' : 'liquido',
+      productType: isAccessory ? 'accesorio' : isVape ? 'vape' : 'liquido',
       variantColor: selectedVariant?.colorName,
       flavorCategory: product.flavorCategory,
       nicotineMg: product.nicotineMg,
       imageUrl: selectedVariant?.imageUrl || product.imageUrl,
-      portion: isVape ? 'tanque_lleno' : portion,
+      portion: isUnit ? 'tanque_lleno' : portion,
       quantity,
       unitPrice,
       extraLiquidName: addonLiquidProduct?.name,
@@ -295,38 +297,42 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
   const displayImage = selectedVariant?.imageUrl || product.imageUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto font-urban">
-      <div className="relative w-full max-w-lg bg-[#0e0a1a] border-2 border-emerald-500/50 rounded-3xl p-5 sm:p-6 shadow-2xl shadow-emerald-950/60 text-white my-auto max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto font-urban">
+      <div className="relative w-full max-w-lg bg-[#07120d] border-2 border-emerald-500/50 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-emerald-950/60 text-white my-auto max-h-[92dvh] overflow-y-auto">
         {/* Glow corner */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Header */}
-        <div className="flex items-start justify-between pb-3 border-b border-purple-900/40">
-          <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center">
+        <div className="flex items-start justify-between pb-3 border-b border-emerald-900/40 gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0">
               <MessageCircle className="w-5 h-5" />
             </span>
-            <div>
-              <span className="text-[10px] font-tag uppercase tracking-wider text-emerald-400 block">
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
                 PEDIDO RÁPIDO POR WHATSAPP
               </span>
-              <h3 className="text-base sm:text-lg font-black text-white">
-                {isVape ? 'Pedir Equipo Vape Express' : 'Recarga Express en 1 Clic'}
+              <h3 className="text-sm sm:text-lg font-black text-white truncate">
+                {isAccessory
+                  ? 'Pedir Accesorio Express'
+                  : isVape
+                  ? 'Pedir Equipo Vape Express'
+                  : 'Recarga Express en 1 Clic'}
               </h3>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-neutral-900 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl bg-neutral-900 text-neutral-400 hover:text-white transition-colors cursor-pointer border border-emerald-900/50 shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Product preview card with photo */}
-        <div className="mt-4 p-3.5 rounded-2xl bg-black/70 border border-purple-900/50 flex items-center gap-3.5">
-          <div className="w-20 h-20 rounded-xl overflow-hidden bg-black shrink-0 border border-purple-800/60 p-1 flex items-center justify-center">
+        <div className="mt-4 p-3.5 rounded-2xl bg-[#050b08] border border-emerald-500/30 flex items-center gap-3.5">
+          <div className="w-20 h-20 rounded-xl overflow-hidden bg-black shrink-0 border border-emerald-800/60 p-1 flex items-center justify-center">
             <img
               src={displayImage}
               alt={product.name}
@@ -335,16 +341,16 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-1">
-              <span className="px-2 py-0.5 rounded text-[9px] font-tag bg-purple-900/60 text-purple-300 border border-purple-700/50">
-                {isVape ? '💨 EQUIPO VAPE' : product.flavorCategory}
+              <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                {isAccessory ? '🔌 ACCESORIO' : isVape ? '💨 EQUIPO VAPE' : product.flavorCategory}
               </span>
-              {!isVape && (
-                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+              {!isUnit && (
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-800">
                   {product.nicotineMg}mg
                 </span>
               )}
-              {isVape && selectedVariant && (
-                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+              {isUnit && selectedVariant && (
+                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-800">
                   Color: {selectedVariant.colorName}
                 </span>
               )}
@@ -357,14 +363,14 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
         </div>
 
         <form onSubmit={handleSendWhatsApp} className="mt-4 space-y-4">
-          {isVape ? (
+          {isUnit ? (
             <>
               {/* Color Selector for Vape */}
               {product.variants && product.variants.length > 0 && (
                 <div>
                   <label className="block text-xs font-bold text-neutral-300 mb-1.5 flex items-center gap-1.5">
-                    <Palette className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Elige el Color del Vape:</span>
+                    <Palette className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Elige el Color:</span>
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {product.variants.map((v) => {
@@ -383,13 +389,13 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                             out
                               ? 'opacity-40 cursor-not-allowed bg-neutral-950 border-neutral-800 text-neutral-500'
                               : isSelected
-                              ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-md shadow-cyan-950'
+                              ? 'bg-emerald-950/90 border-emerald-400 text-white shadow-md shadow-emerald-950'
                               : 'bg-black/60 border-neutral-800 text-neutral-300 hover:text-white'
                           }`}
                         >
                           <span
                             className="w-3 h-3 rounded-full border border-white/40"
-                            style={{ backgroundColor: v.colorHex || '#9333ea' }}
+                            style={{ backgroundColor: v.colorHex || '#10b981' }}
                           />
                           <span>{v.colorName}</span>
                           <span className="text-[10px] text-neutral-400">
@@ -403,11 +409,11 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
               )}
 
               {/* Immediate Liquid Refill Cross-Sell inside WhatsApp Modal */}
-              {availableLiquids.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 via-[#120c24] to-cyan-950/50 border border-cyan-500/40 space-y-2.5">
+              {isVape && availableLiquids.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-[#081710] to-teal-950/50 border border-emerald-500/40 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
-                      <Droplet className="w-3.5 h-3.5 fill-cyan-400 text-cyan-400" />
+                    <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                      <Droplet className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
                       <span>¿Le echamos líquido de una vez a tu nuevo Vape?</span>
                     </span>
                     {selectedAddonLiquidId && (
@@ -424,7 +430,7 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                   <select
                     value={selectedAddonLiquidId}
                     onChange={(e) => setSelectedAddonLiquidId(e.target.value)}
-                    className="w-full bg-black/80 border border-purple-700/60 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    className="w-full bg-black/80 border border-emerald-700/60 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-emerald-400 cursor-pointer"
                   >
                     <option value="">No, solo quiero el equipo Vape por ahora</option>
                     {availableLiquids
@@ -448,19 +454,19 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                         }`}
                       >
                         <span>Tanque Lleno</span>
-                        <span className="font-black">+${addonLiquidProduct.priceFullTank || 100}</span>
+                        <span className="font-black">+RD${addonLiquidProduct.priceFullTank || 100}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedAddonPortion('mitad')}
                         className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer ${
                           selectedAddonPortion === 'mitad'
-                            ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300'
+                            ? 'bg-teal-950/80 border-teal-400 text-teal-300'
                             : 'bg-black/60 border-neutral-800 text-neutral-400'
                         }`}
                       >
                         <span>Mitad Tanque</span>
-                        <span className="font-black">+${addonLiquidProduct.priceHalfTank || 50}</span>
+                        <span className="font-black">+RD${addonLiquidProduct.priceHalfTank || 50}</span>
                       </button>
                     </div>
                   )}
@@ -487,8 +493,9 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                     <span className="text-xs font-bold">Tanque Lleno</span>
                     <Droplet className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
                   </div>
-                  <div className="text-sm font-black text-emerald-400 mt-1">
-                    ${product.priceFullTank || 100} DOP <span className="text-[10px] font-normal text-neutral-400">(100%)</span>
+                  <div className="text-sm font-black text-emerald-400 mt-1 tabular-nums">
+                    RD${product.priceFullTank || 100}{' '}
+                    <span className="text-[10px] font-normal text-neutral-400">(100%)</span>
                   </div>
                 </button>
 
@@ -497,16 +504,17 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                   onClick={() => setPortion('mitad')}
                   className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                     portion === 'mitad'
-                      ? 'bg-cyan-950/60 border-cyan-400 text-white shadow-lg shadow-cyan-950'
+                      ? 'bg-teal-950/60 border-teal-400 text-white shadow-lg shadow-teal-950'
                       : 'bg-black/50 border-neutral-800 text-neutral-400 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold">Mitad Tanque</span>
-                    <Droplet className="w-3.5 h-3.5 text-cyan-400" />
+                    <Droplet className="w-3.5 h-3.5 text-teal-400" />
                   </div>
-                  <div className="text-sm font-black text-cyan-400 mt-1">
-                    ${product.priceHalfTank || 50} DOP <span className="text-[10px] font-normal text-neutral-400">(50%)</span>
+                  <div className="text-sm font-black text-teal-400 mt-1 tabular-nums">
+                    RD${product.priceHalfTank || 50}{' '}
+                    <span className="text-[10px] font-normal text-neutral-400">(50%)</span>
                   </div>
                 </button>
               </div>
@@ -514,32 +522,36 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
           )}
 
           {/* Quantity stepper */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-black/60 border border-neutral-800">
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-[#050b08] border border-emerald-900/50">
             <div>
               <span className="text-xs font-bold text-white block">
-                {isVape ? 'Cantidad de Equipos Vape:' : 'Cantidad de Tanques:'}
+                {isAccessory
+                  ? 'Cantidad de Accesorios:'
+                  : isVape
+                  ? 'Cantidad de Equipos Vape:'
+                  : 'Cantidad de Tanques:'}
               </span>
-              <span className="text-[11px] text-neutral-400">
-                ${unitPrice} DOP c/u
-                {addonLiquidProduct ? ` + Recarga $${addonLiquidPrice} DOP` : ''} = ${subtotalLiquid} DOP
+              <span className="text-[11px] text-neutral-400 tabular-nums">
+                RD${unitPrice} c/u
+                {addonLiquidProduct ? ` + Recarga RD$${addonLiquidPrice}` : ''} = RD${subtotalLiquid}
               </span>
             </div>
-            <div className="flex items-center gap-2 bg-[#120c22] border border-purple-800/60 rounded-xl p-1">
+            <div className="flex items-center gap-2 bg-[#08130e] border border-emerald-500/40 rounded-xl p-1">
               <button
                 type="button"
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="w-8 h-8 flex items-center justify-center text-neutral-300 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors font-black text-sm"
+                className="w-8 h-8 flex items-center justify-center text-neutral-300 hover:text-white rounded-lg hover:bg-emerald-950/60 transition-colors font-black text-sm cursor-pointer"
               >
                 -
               </button>
-              <span className="text-sm font-black text-white px-2 min-w-[24px] text-center">
+              <span className="text-sm font-black text-white px-2 min-w-[24px] text-center tabular-nums">
                 {quantity}
               </span>
               <button
                 type="button"
                 disabled={quantity >= maxStock}
                 onClick={() => setQuantity((q) => Math.min(maxStock, q + 1))}
-                className="w-8 h-8 flex items-center justify-center text-neutral-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-lg hover:bg-neutral-800 transition-colors font-black text-sm cursor-pointer"
+                className="w-8 h-8 flex items-center justify-center text-neutral-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-lg hover:bg-emerald-950/60 transition-colors font-black text-sm cursor-pointer"
                 title={quantity >= maxStock ? `Máximo disponible: ${maxStock}` : 'Aumentar cantidad'}
               >
                 +
@@ -560,7 +572,7 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                   placeholder="Ej: Carlos Rodríguez"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full bg-black/70 border border-neutral-800 rounded-xl py-2 px-3 pl-8 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-[#050b08] border border-emerald-900/60 rounded-xl py-2 px-3 pl-8 text-xs text-white focus:outline-none focus:border-emerald-500"
                 />
                 <User className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-2.5" />
               </div>
@@ -577,25 +589,25 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                   placeholder="Ej: 809-210-4901"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="w-full bg-black/70 border border-neutral-800 rounded-xl py-2 px-3 pl-8 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-[#050b08] border border-emerald-900/60 rounded-xl py-2 px-3 pl-8 text-xs text-white focus:outline-none focus:border-emerald-500"
                 />
                 <Phone className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-2.5" />
               </div>
             </div>
           </div>
 
-            {/* Location picker */}
-          <div className="p-3.5 rounded-2xl bg-black/70 border border-neutral-800 space-y-2.5">
+          {/* Location picker */}
+          <div className="p-3.5 rounded-2xl bg-[#050b08] border border-emerald-900/50 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-                <span>¿Dónde te llevamos la recarga?</span>
+                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                <span>¿Dónde te llevamos el pedido?</span>
               </span>
               <button
                 type="button"
                 onClick={handleGetGPS}
                 disabled={isLocating}
-                className="px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/50 text-[11px] font-bold text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
+                className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-[11px] font-bold text-emerald-300 flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Navigation className={`w-3 h-3 ${isLocating ? 'animate-spin' : ''}`} />
                 <span>{isLocating ? 'Obteniendo GPS...' : 'Usar mi GPS'}</span>
@@ -616,7 +628,7 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
             )}
 
             {locatingStatus && (
-              <p className="text-[11px] font-medium text-cyan-300 bg-cyan-950/40 px-2.5 py-1 rounded-lg border border-cyan-800/50">
+              <p className="text-[11px] font-medium text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-800/50">
                 {locatingStatus}
               </p>
             )}
@@ -634,8 +646,8 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                     onClick={() => handleSelectSector(sec.lat, sec.lng, sec.name)}
                     className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer border ${
                       detectedAddress.includes(sec.name)
-                        ? 'bg-cyan-600 text-white border-cyan-400'
-                        : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-700'
+                        ? 'bg-emerald-500 text-neutral-950 border-emerald-400 font-black'
+                        : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-emerald-700'
                     }`}
                   >
                     {sec.name}
@@ -651,23 +663,23 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
                 placeholder="Punto de referencia o casa (Ej: Casa azul frente al parque)"
                 value={deliveryAddressNote}
                 onChange={(e) => setDeliveryAddressNote(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             {/* Location & Delivery Fee Breakdown */}
-            <div className="p-2.5 rounded-xl bg-neutral-900/90 border border-neutral-800 text-[11px] text-neutral-300 space-y-1">
+            <div className="p-2.5 rounded-xl bg-[#08130e] border border-emerald-900/60 text-[11px] text-neutral-300 space-y-1">
               <div className="flex justify-between">
                 <span>Distancia desde Colmado Noadia:</span>
-                <span className="font-bold text-cyan-400">{distanceKm} km</span>
+                <span className="font-bold text-emerald-400 tabular-nums">{distanceKm} km</span>
               </div>
               <div className="flex justify-between">
                 <span>Tarifa Delivery ({deliveryCalc.zone.shortLabel}):</span>
-                <span className="font-bold text-emerald-400">${deliveryFee} DOP</span>
+                <span className="font-bold text-emerald-400 tabular-nums">RD${deliveryFee}</span>
               </div>
-              <div className="flex justify-between pt-1 border-t border-neutral-800 text-xs font-black text-white">
+              <div className="flex justify-between pt-1 border-t border-emerald-950 text-xs font-black text-white">
                 <span>TOTAL A PAGAR:</span>
-                <span className="text-emerald-400 font-urban text-sm">${totalAmount} DOP</span>
+                <span className="text-emerald-400 font-urban text-sm tabular-nums">RD${totalAmount}</span>
               </div>
             </div>
           </div>
@@ -689,9 +701,9 @@ export const QuickWhatsAppOrderModal: React.FC<QuickWhatsAppOrderModalProps> = (
             </button>
             <button
               type="submit"
-              className="flex-1 py-3.5 px-5 bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-xs sm:text-sm rounded-xl shadow-xl shadow-emerald-950/80 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 py-3.5 px-5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 font-black text-xs sm:text-sm rounded-xl shadow-xl shadow-emerald-950/80 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <MessageCircle className="w-4 h-4 fill-white" />
+              <MessageCircle className="w-4 h-4 fill-neutral-950" />
               <span>Enviar Pedido a WhatsApp de BLACK VAPE</span>
               <ExternalLink className="w-3.5 h-3.5 opacity-80" />
             </button>

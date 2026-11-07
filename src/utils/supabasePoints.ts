@@ -19,10 +19,10 @@ import {
 } from './points';
 
 const STORAGE_KEYS = {
-  POINT_TRANSACTIONS: 'vape_point_transactions_v1',
-  REDEMPTIONS: 'vape_redemptions_v1',
-  RAFFLES: 'vape_raffles_v1',
-  RAFFLE_PARTICIPANTS: 'vape_raffle_participants_v1',
+  POINT_TRANSACTIONS: 'vape_point_transactions_v4_db',
+  REDEMPTIONS: 'vape_redemptions_v4_db',
+  RAFFLES: 'vape_raffles_v4_db',
+  RAFFLE_PARTICIPANTS: 'vape_raffle_participants_v4_db',
 };
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -265,8 +265,6 @@ export async function fetchUserPoints(userId: string): Promise<number> {
 }
 
 export async function fetchPointTransactions(userId?: string): Promise<PointTransaction[]> {
-  const cached = getStoredPointTransactions();
-
   if (isSupabaseConfigured() && (!userId || isUuid(userId))) {
     try {
       let query = supabase
@@ -279,24 +277,21 @@ export async function fetchPointTransactions(userId?: string): Promise<PointTran
       }
 
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        const serverTxs = data.map(mapDbTransactionToClient);
-        const mergedMap = new Map<string, PointTransaction>();
-        for (const st of serverTxs) mergedMap.set(st.id, st);
-        for (const ct of cached) {
-          if (!mergedMap.has(ct.id)) mergedMap.set(ct.id, ct);
+      if (!error && Array.isArray(data)) {
+        const serverTxs = data
+          .map(mapDbTransactionToClient)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (!userId) {
+          savePointTransactions(serverTxs);
         }
-        const merged = Array.from(mergedMap.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        savePointTransactions(merged);
-        return userId ? merged.filter((t) => t.userId === userId) : merged;
+        return serverTxs;
       }
     } catch (err) {
       console.warn('Error fetching transactions from Supabase:', err);
     }
   }
 
+  const cached = getStoredPointTransactions();
   if (userId) {
     return cached.filter((t) => t.userId === userId);
   }
@@ -308,8 +303,6 @@ export async function fetchPointTransactions(userId?: string): Promise<PointTran
 // ---------------------------------------------------------------------------
 
 export async function fetchRedemptions(statusFilter?: RedemptionStatus): Promise<RedemptionRequest[]> {
-  const cached = getStoredRedemptions();
-
   if (isSupabaseConfigured()) {
     try {
       let query = supabase
@@ -322,28 +315,23 @@ export async function fetchRedemptions(statusFilter?: RedemptionStatus): Promise
       }
 
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        const serverRedemptions = data.map(mapDbRedemptionToClient);
-        const mergedMap = new Map<string, RedemptionRequest>();
-        for (const sr of serverRedemptions) mergedMap.set(sr.id, sr);
-        for (const cr of cached) {
-          if (!mergedMap.has(cr.id)) {
-            mergedMap.set(cr.id, cr);
-          } else if (cr.status !== 'pendiente' && mergedMap.get(cr.id)?.status === 'pendiente') {
-            mergedMap.set(cr.id, cr);
-          }
+      if (!error && Array.isArray(data)) {
+        const serverRedemptions = data
+          .map(mapDbRedemptionToClient)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (!statusFilter) {
+          saveRedemptions(serverRedemptions);
         }
-        const merged = Array.from(mergedMap.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        saveRedemptions(merged);
-        return statusFilter ? merged.filter((r) => r.status === statusFilter) : merged;
+        return statusFilter
+          ? serverRedemptions.filter((r) => r.status === statusFilter)
+          : serverRedemptions;
       }
     } catch (err) {
       console.warn('Error fetching redemptions from Supabase:', err);
     }
   }
 
+  const cached = getStoredRedemptions();
   if (statusFilter) {
     return cached.filter((r) => r.status === statusFilter);
   }
@@ -628,7 +616,37 @@ export async function fetchRegisteredCustomers(): Promise<
     createdAt?: string;
   }>
 > {
-  const localBuyers = getStoredUsers()
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, phone, points_balance, created_at')
+        .eq('role', 'comprador')
+        .eq('is_active', true);
+
+      if (!error && Array.isArray(data)) {
+        return data
+          .filter(
+            (d) =>
+              d.id !== 'user-buyer-1' &&
+              !(d.name === 'Alejandro Medina' && d.phone === '809-772-4011')
+          )
+          .map((d) => ({
+            id: d.id,
+            name: d.name || 'Cliente sin nombre',
+            phone: d.phone,
+            email: undefined,
+            pointsBalance: Number(d.points_balance || 0),
+            createdAt: d.created_at,
+          }))
+          .sort((a, b) => Number(b.pointsBalance || 0) - Number(a.pointsBalance || 0));
+      }
+    } catch (err) {
+      console.warn('Error fetching customers from Supabase:', err);
+    }
+  }
+
+  return getStoredUsers()
     .filter((u) => u.role === 'comprador')
     .map((u) => ({
       id: u.id,
@@ -637,45 +655,8 @@ export async function fetchRegisteredCustomers(): Promise<
       email: u.email,
       pointsBalance: Number(u.pointsBalance || 0),
       createdAt: u.createdAt,
-    }));
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name, phone, points_balance, created_at')
-        .eq('role', 'comprador');
-
-      if (!error && data && data.length > 0) {
-        const mergedMap = new Map<string, (typeof localBuyers)[number]>();
-        for (const d of data) {
-          if (d.id === 'user-buyer-1' || (d.name === 'Alejandro Medina' && d.phone === '809-772-4011')) {
-            continue;
-          }
-          mergedMap.set(d.id, {
-            id: d.id,
-            name: d.name || 'Cliente sin nombre',
-            phone: d.phone,
-            email: undefined,
-            pointsBalance: Number(d.points_balance || 0),
-            createdAt: d.created_at,
-          });
-        }
-        for (const lb of localBuyers) {
-          if (!mergedMap.has(lb.id)) {
-            mergedMap.set(lb.id, lb);
-          }
-        }
-        return Array.from(mergedMap.values()).sort(
-          (a, b) => Number(b.pointsBalance || 0) - Number(a.pointsBalance || 0)
-        );
-      }
-    } catch (err) {
-      console.warn('Error fetching customers from Supabase:', err);
-    }
-  }
-
-  return localBuyers.sort((a, b) => Number(b.pointsBalance || 0) - Number(a.pointsBalance || 0));
+    }))
+    .sort((a, b) => Number(b.pointsBalance || 0) - Number(a.pointsBalance || 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -795,8 +776,6 @@ export async function resetUserPoints(
 // ---------------------------------------------------------------------------
 
 export async function fetchRaffles(): Promise<Raffle[]> {
-  const localRaffles = getStoredRaffles();
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
@@ -804,24 +783,18 @@ export async function fetchRaffles(): Promise<Raffle[]> {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const serverRaffles = data.map(mapDbRaffleToClient);
-        const mergedMap = new Map<string, Raffle>();
-        for (const sr of serverRaffles) mergedMap.set(sr.id, sr);
-        for (const lr of localRaffles) {
-          if (!mergedMap.has(lr.id)) mergedMap.set(lr.id, lr);
-        }
-        const merged = Array.from(mergedMap.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        saveRaffles(merged);
-        return merged;
+      if (!error && Array.isArray(data)) {
+        const serverRaffles = data
+          .map(mapDbRaffleToClient)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        saveRaffles(serverRaffles);
+        return serverRaffles;
       }
     } catch (err) {
       console.warn('Error fetching raffles from Supabase:', err);
     }
   }
-  return localRaffles;
+  return getStoredRaffles();
 }
 
 export async function fetchRaffleParticipants(raffleId: string): Promise<RaffleParticipant[]> {

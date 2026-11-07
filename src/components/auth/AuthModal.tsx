@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserAccount, UserRole } from '../../types';
 import {
   loginOrRegisterBuyer,
@@ -35,6 +35,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialRole = 'comprador',
 }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(initialRole);
+  useEffect(() => {
+    setSelectedRole(initialRole);
+    setErrorMessage('');
+  }, [initialRole]);
   const [adminMode, setAdminMode] = useState<'login' | 'register'>('login');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -144,11 +148,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-xl overflow-y-auto font-urban">
-      <div className="relative w-full max-w-md bg-[#0d0918]/95 border-2 border-purple-500/50 rounded-3xl p-5 sm:p-7 shadow-2xl shadow-purple-950 text-neutral-100 my-auto">
+      <div className="relative w-full max-w-md bg-[#07120d]/95 border-2 border-emerald-500/50 rounded-3xl p-5 sm:p-7 shadow-2xl shadow-emerald-950/70 text-neutral-100 my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-purple-900/40">
+        <div className="flex items-center justify-between pb-3.5 border-b border-emerald-900/40">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full p-0.5 bg-gradient-to-tr from-purple-600 via-cyan-400 to-purple-500 shadow-md shadow-purple-600/40 shrink-0">
+            <div className="w-11 h-11 rounded-full p-0.5 bg-gradient-to-tr from-emerald-500 via-teal-400 to-emerald-400 shadow-md shadow-emerald-500/30 shrink-0">
               <div className="w-full h-full rounded-full overflow-hidden bg-black flex items-center justify-center">
                 <img
                   src="/logo-black-vape.jpeg"
@@ -161,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
             <div>
-              <span className="text-[10px] font-tag uppercase tracking-wider text-purple-400 block">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
                 BLACK VAPE • ACCESO
               </span>
               <h2 className="text-lg font-black text-white font-urban">Identifícate por Rol</h2>
@@ -170,7 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 text-neutral-400 hover:text-white transition-all cursor-pointer border border-purple-800/40"
+            className="p-2 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 text-neutral-400 hover:text-white transition-all cursor-pointer border border-emerald-800/40"
             aria-label="Cerrar modal de autenticación"
           >
             <X className="w-5 h-5" />
@@ -178,7 +182,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Role Segmented Buttons */}
-        <div className="mt-4 grid grid-cols-3 gap-1.5 p-1 bg-black/60 rounded-2xl border border-purple-900/50">
+        <div className="mt-4 grid grid-cols-3 gap-1.5 p-1 bg-[#050b08] rounded-2xl border border-emerald-900/50">
           <button
             type="button"
             onClick={() => {
@@ -203,7 +207,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             }}
             className={`py-2 px-1 text-center rounded-xl text-xs font-black transition-all cursor-pointer flex flex-col items-center gap-1 font-urban ${
               selectedRole === 'delivery'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-neutral-950 shadow-md shadow-cyan-500/20'
+                ? 'bg-gradient-to-r from-teal-500 to-cyan-400 text-neutral-950 shadow-md shadow-teal-500/20'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
@@ -219,7 +223,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             }}
             className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all cursor-pointer flex flex-col items-center gap-1 ${
               selectedRole === 'admin'
-                ? 'bg-violet-600 text-white shadow'
+                ? 'bg-emerald-700 text-white shadow'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
@@ -238,7 +242,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* 1. COMPRADOR FORM: Solo Nombre y Teléfono */}
         {selectedRole === 'comprador' && (
           <form onSubmit={handleBuyerSubmit} className="mt-5 space-y-4">
-            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl text-[11px] text-emerald-300">
+            <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-2xl text-[11px] text-emerald-300">
               👋 <strong>Acceso rápido sin contraseñas:</strong> Ingresa tu nombre y tu teléfono para
               realizar pedidos y recibir llamadas del repartidor.
             </div>
@@ -357,7 +361,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   placeholder="noadiasclaribel.y2k@icloud.com"
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
@@ -372,7 +376,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   placeholder="••••••••"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
@@ -380,7 +384,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-4 bg-violet-600 hover:bg-violet-500 text-white font-black text-sm rounded-xl shadow-lg shadow-violet-600/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 font-black text-sm rounded-xl shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
             >
               <span>
                 {isLoading

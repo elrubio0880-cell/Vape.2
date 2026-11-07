@@ -28,7 +28,11 @@ const VAPE_META_SUFFIX = '-->';
 
 export function encodeProductDescription(product: Product): string {
   const rawDesc = (product.description || '').replace(/<!--VAPE_META:[\s\S]*?-->/g, '').trim();
-  if (product.productType === 'vape' || (product.variants && product.variants.length > 0)) {
+  if (
+    product.productType === 'vape' ||
+    product.productType === 'accesorio' ||
+    (product.variants && product.variants.length > 0)
+  ) {
     const metaPayload = JSON.stringify({
       productType: product.productType || 'vape',
       variants: product.variants || [],
@@ -58,9 +62,15 @@ export function decodeProductDescription(rawDesc?: string): {
   const jsonStr = rawDesc.slice(startIdx + VAPE_META_PREFIX.length, endIdx);
   try {
     const parsed = JSON.parse(jsonStr);
+    const resolvedType: ProductType =
+      parsed.productType === 'vape'
+        ? 'vape'
+        : parsed.productType === 'accesorio'
+        ? 'accesorio'
+        : 'liquido';
     return {
       cleanDescription,
-      productType: parsed.productType === 'vape' ? 'vape' : 'liquido',
+      productType: resolvedType,
       variants: Array.isArray(parsed.variants) ? parsed.variants : undefined,
     };
   } catch {
@@ -73,23 +83,36 @@ export function decodeProductDescription(rawDesc?: string): {
  */
 export function mapDbProductToClient(row: any): Product {
   const decoded = decodeProductDescription(row.description || '');
+  const catLower = typeof row.flavor_category === 'string' ? row.flavor_category.toLowerCase() : '';
+  const isAccessoryCategory =
+    row.product_type === 'accesorio' ||
+    decoded.productType === 'accesorio' ||
+    catLower.includes('accesorio') ||
+    catLower.includes('coil') ||
+    catLower.includes('repuesto') ||
+    catLower.includes('pod');
   const isVapeCategory =
-    row.product_type === 'vape' ||
-    decoded.productType === 'vape' ||
-    (typeof row.flavor_category === 'string' &&
-      row.flavor_category.toLowerCase().includes('vape'));
+    !isAccessoryCategory &&
+    (row.product_type === 'vape' ||
+      decoded.productType === 'vape' ||
+      catLower.includes('vape'));
+  const resolvedProductType: ProductType = isAccessoryCategory
+    ? 'accesorio'
+    : isVapeCategory
+    ? 'vape'
+    : 'liquido';
   const nativeVariants =
     Array.isArray(row.variants) && row.variants.length > 0 ? row.variants : undefined;
   const variants: VapeVariant[] | undefined = nativeVariants || decoded.variants;
   const computedStock =
-    isVapeCategory && variants && variants.length > 0
+    (isVapeCategory || isAccessoryCategory) && variants && variants.length > 0
       ? variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
       : Number(row.stock_units || 0);
 
   return {
     id: row.id,
     name: row.name,
-    productType: isVapeCategory ? 'vape' : 'liquido',
+    productType: resolvedProductType,
     flavorCategory: row.flavor_category,
     nicotineMg: Number(row.nicotine_mg || 0),
     imageUrl: row.image_url,
@@ -153,7 +176,11 @@ export function mapDbOrderToClient(row: any, items: OrderItem[] = [], statusHist
           productId: it.product_id || 'prod-eliminado',
           productName: it.product_name,
           productType:
-            it.product_type === 'vape' || it.variant_id || it.variant_color ? 'vape' : 'liquido',
+            it.product_type === 'accesorio'
+              ? 'accesorio'
+              : it.product_type === 'vape' || it.variant_id || it.variant_color
+              ? 'vape'
+              : 'liquido',
           portion: it.portion,
           unitPrice: Number(it.unit_price),
           costPrice: Number(it.cost_price || 0),
@@ -226,8 +253,6 @@ const ORDER_STATUS_RANK: Record<OrderStatus, number> = {
  * 1. Fetch Products 100% from Supabase (Single Source of Truth)
  */
 export async function fetchProducts(): Promise<Product[]> {
-  const deletedIds = new Set(getDeletedProductIds());
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
@@ -239,7 +264,7 @@ export async function fetchProducts(): Promise<Product[]> {
       if (!error && Array.isArray(data)) {
         const serverProducts = data
           .map(mapDbProductToClient)
-          .filter((p) => !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && !deletedIds.has(p.id) && p.isActive);
+          .filter((p) => !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && p.isActive);
 
         saveProducts(serverProducts, false);
         return serverProducts;
@@ -248,18 +273,14 @@ export async function fetchProducts(): Promise<Product[]> {
       console.warn('Error al cargar productos de Supabase:', err);
     }
   }
+  const deletedIds = new Set(getDeletedProductIds());
   return getStoredProducts().filter((p) => !LEGACY_DEMO_PRODUCT_IDS.has(p.id) && !deletedIds.has(p.id));
 }
 
 /**
- * 2. Fetch Store Config from Supabase (respects local admin edits)
+ * 2. Fetch Store Config 100% from Supabase (Single Source of Truth)
  */
 export async function fetchStoreConfig(): Promise<StoreConfig> {
-  const localStore = getStoredStore();
-  if (isStoreCustomized()) {
-    return localStore;
-  }
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
@@ -277,16 +298,13 @@ export async function fetchStoreConfig(): Promise<StoreConfig> {
       console.warn('Error al cargar configuración de tienda de Supabase:', err);
     }
   }
-  return localStore;
+  return getStoredStore();
 }
 
 /**
- * 3. Fetch Orders with Items and Status History from Supabase
- * Merges server orders with local orders so RLS empty responses never wipe local orders on refresh.
+ * 3. Fetch Orders with Items and Status History 100% from Supabase (Single Source of Truth)
  */
 export async function fetchOrders(): Promise<Order[]> {
-  const localOrders = getStoredOrders();
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
@@ -294,7 +312,7 @@ export async function fetchOrders(): Promise<Order[]> {
         .select('*, order_items(*), order_status_history(*)')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const allServerOrders = data.map((o) => mapDbOrderToClient(o));
         const hasServerDemoOrders = allServerOrders.some((o) => DEMO_ORDER_IDS.has(o.id));
         if (hasServerDemoOrders) {
@@ -304,57 +322,18 @@ export async function fetchOrders(): Promise<Order[]> {
             .in('id', Array.from(DEMO_ORDER_IDS))
             .then(() => {}, () => {});
         }
-        const serverOrders = allServerOrders.filter((o) => !DEMO_ORDER_IDS.has(o.id));
-        const mergedMap = new Map<string, Order>();
-
-        for (const so of serverOrders) {
-          mergedMap.set(so.id, so);
-        }
-
-        if (!isOrdersPurgedByAdmin()) {
-          for (const lo of localOrders) {
-            if (DEMO_ORDER_IDS.has(lo.id)) continue;
-            const existingServer = mergedMap.get(lo.id);
-            if (!existingServer) {
-              mergedMap.set(lo.id, lo);
-            } else {
-              const localRank = ORDER_STATUS_RANK[lo.status] || 0;
-              const serverRank = ORDER_STATUS_RANK[existingServer.status] || 0;
-              const useLocalState =
-                localRank > serverRank ||
-                (localRank === serverRank &&
-                  (lo.statusHistory?.length || 0) >= (existingServer.statusHistory?.length || 0));
-
-              mergedMap.set(lo.id, {
-                ...(useLocalState ? lo : existingServer),
-                customerId: lo.customerId || existingServer.customerId,
-                driverId: lo.driverId || existingServer.driverId,
-                driverName: lo.driverName || existingServer.driverName,
-                driverPhone: lo.driverPhone || existingServer.driverPhone,
-                driverLocation: lo.driverLocation || existingServer.driverLocation,
-                orderType: lo.orderType || existingServer.orderType,
-                redemptionId: lo.redemptionId || existingServer.redemptionId,
-                pointsRedeemed: lo.pointsRedeemed ?? existingServer.pointsRedeemed,
-                items:
-                  existingServer.items && existingServer.items.length > 0
-                    ? existingServer.items
-                    : lo.items,
-              });
-            }
-          }
-        }
-
-        const mergedList = Array.from(mergedMap.values())
+        const serverOrders = allServerOrders
           .filter((o) => !DEMO_ORDER_IDS.has(o.id))
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        saveOrders(mergedList);
-        return mergedList;
+
+        saveOrders(serverOrders);
+        return serverOrders;
       }
     } catch (err) {
       console.warn('Error al cargar pedidos de Supabase, usando local cache:', err);
     }
   }
-  return localOrders;
+  return getStoredOrders();
 }
 
 export interface CreateOrderParams {
@@ -487,10 +466,12 @@ export async function createOrderOnServer(
 
   for (const it of params.items) {
     const prod = currentProducts.find((p) => p.id === it.productId)!;
-    const isVape = prod.productType === 'vape' || it.productType === 'vape';
+    const isAccessory = prod.productType === 'accesorio' || it.productType === 'accesorio';
+    const isVape = !isAccessory && (prod.productType === 'vape' || it.productType === 'vape');
+    const isUnitItem = isVape || isAccessory;
 
     // Validate per-color variant stock if applicable
-    if (isVape && prod.variants && prod.variants.length > 0 && (it.variantId || it.variantColor)) {
+    if (isUnitItem && prod.variants && prod.variants.length > 0 && (it.variantId || it.variantColor)) {
       const targetVar = prod.variants.find(
         (v) => v.id === it.variantId || v.colorName === it.variantColor
       );
@@ -502,7 +483,7 @@ export async function createOrderOnServer(
       }
     }
 
-    const unitPrice = isVape
+    const unitPrice = isUnitItem
       ? prod.priceFullTank
       : it.portion === 'tanque_lleno'
       ? prod.priceFullTank
@@ -511,15 +492,15 @@ export async function createOrderOnServer(
     liquidCostTotal += prod.costPrice * it.quantity;
 
     const displayName =
-      isVape && it.variantColor && !prod.name.includes(`(${it.variantColor})`)
+      isUnitItem && it.variantColor && !prod.name.includes(`(${it.variantColor})`)
         ? `${prod.name} (${it.variantColor})`
         : prod.name;
 
     orderItems.push({
       productId: prod.id,
       productName: displayName,
-      productType: isVape ? 'vape' : 'liquido',
-      portion: isVape ? 'tanque_lleno' : it.portion,
+      productType: isAccessory ? 'accesorio' : isVape ? 'vape' : 'liquido',
+      portion: isUnitItem ? 'tanque_lleno' : it.portion,
       unitPrice,
       costPrice: prod.costPrice,
       quantity: it.quantity,
@@ -931,8 +912,9 @@ export async function saveProductToServer(product: Product): Promise<{ success: 
       await ensureSupabaseAdminSession();
       const encodedDescription = encodeProductDescription(product);
       const isVape = product.productType === 'vape';
+      const isAccessory = product.productType === 'accesorio';
       const totalStock =
-        isVape && product.variants && product.variants.length > 0
+        (isVape || isAccessory) && product.variants && product.variants.length > 0
           ? product.variants.reduce((sum, v) => sum + Number(v.stockUnits || 0), 0)
           : product.stockUnits;
 
@@ -940,7 +922,7 @@ export async function saveProductToServer(product: Product): Promise<{ success: 
       const fullPayload: Record<string, any> = {
         id: product.id,
         name: product.name,
-        product_type: isVape ? 'vape' : 'liquido',
+        product_type: isAccessory ? 'accesorio' : isVape ? 'vape' : 'liquido',
         flavor_category: product.flavorCategory,
         nicotine_mg: product.nicotineMg,
         image_url: product.imageUrl,
@@ -949,7 +931,7 @@ export async function saveProductToServer(product: Product): Promise<{ success: 
         price_full_tank: product.priceFullTank,
         price_half_tank: product.priceHalfTank,
         description: encodedDescription,
-        variants: isVape && product.variants ? product.variants : [],
+        variants: (isVape || isAccessory) && product.variants ? product.variants : [],
         is_active: product.isActive,
         updated_at: new Date().toISOString(),
       };

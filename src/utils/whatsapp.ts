@@ -38,7 +38,7 @@ export function generateWhatsAppLink(phone: string, message: string): string {
 
 export interface SingleProductOrderParams {
   productName: string;
-  productType?: 'liquido' | 'vape';
+  productType?: 'liquido' | 'vape' | 'accesorio';
   variantColor?: string;
   flavorCategory?: string;
   nicotineMg?: number;
@@ -59,11 +59,15 @@ export interface SingleProductOrderParams {
 }
 
 /**
- * Builds an organized, beautiful WhatsApp message to place an order for a single liquid or vape directly.
+ * Builds an organized, beautiful WhatsApp message to place an order for a single liquid, vape, or accessory directly.
  */
 export function buildSingleProductWhatsAppMessage(params: SingleProductOrderParams): string {
   const isVape = params.productType === 'vape';
-  const portionName = isVape
+  const isAccessory = params.productType === 'accesorio';
+  const isUnit = isVape || isAccessory;
+  const portionName = isAccessory
+    ? `Accesorio Original${params.variantColor ? ` • ${params.variantColor}` : ''}`
+    : isVape
     ? `Equipo Vape Nuevo${params.variantColor ? ` • Color: ${params.variantColor}` : ''}`
     : params.portion === 'tanque_lleno'
     ? 'Tanque Lleno (100%)'
@@ -90,20 +94,26 @@ export function buildSingleProductWhatsAppMessage(params: SingleProductOrderPara
   }
 
   const lines = [
-    isVape
+    isAccessory
+      ? `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UN ACCESORIO* 💨`
+      : isVape
       ? `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UN EQUIPO VAPE* 💨`
       : `💨 *¡HOLA BLACK VAPE! QUIERO PEDIR UNA RECARGA DE VAPE* 💨`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     `🏪 *Punto de Salida:* ${params.storeName}`,
     `📍 ${params.storeAddress}`,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-    isVape ? `📦 *DETALLE DEL EQUIPO VAPE:*` : `📦 *DETALLE DEL LÍQUIDO:*`,
-    `• *${isVape ? 'Equipo Vape' : 'Líquido'}:* ${params.productName}`,
-    isVape && params.variantColor ? `• *Color Elegido:* ${params.variantColor}` : null,
+    isAccessory
+      ? `📦 *DETALLE DEL ACCESORIO:*`
+      : isVape
+      ? `📦 *DETALLE DEL EQUIPO VAPE:*`
+      : `📦 *DETALLE DEL LÍQUIDO:*`,
+    `• *${isAccessory ? 'Accesorio' : isVape ? 'Equipo Vape' : 'Líquido'}:* ${params.productName}`,
+    isUnit && params.variantColor ? `• *Color/Variante:* ${params.variantColor}` : null,
     params.flavorCategory ? `• *Categoría:* ${params.flavorCategory}` : null,
-    !isVape && params.nicotineMg !== undefined ? `• *Nicotina:* ${params.nicotineMg} mg` : null,
+    !isUnit && params.nicotineMg !== undefined ? `• *Nicotina:* ${params.nicotineMg} mg` : null,
     `• *Modalidad:* ${portionName}`,
-    `• *Cantidad:* ${params.quantity} ${isVape ? 'unidad(es)' : 'porción(es)'}`,
+    `• *Cantidad:* ${params.quantity} ${isUnit ? 'unidad(es)' : 'porción(es)'}`,
     `• *Precio Unidad:* $${params.unitPrice} DOP`,
     params.extraLiquidName
       ? `• *+ Recarga de Líquido Incluida:* ${params.extraLiquidName} (${
@@ -140,7 +150,7 @@ export interface FullCartOrderParams {
   location: Coordinates;
   items: Array<{
     productName: string;
-    productType?: 'liquido' | 'vape';
+    productType?: 'liquido' | 'vape' | 'accesorio';
     variantColor?: string;
     portion: PortionType;
     unitPrice: number;
@@ -166,7 +176,10 @@ export function buildFullCartWhatsAppMessage(params: FullCartOrderParams): strin
 
   const itemsList = params.items.map((it, idx) => {
     const isVape = it.productType === 'vape';
-    const portionName = isVape
+    const isAccessory = it.productType === 'accesorio';
+    const portionName = isAccessory
+      ? `Accesorio${it.variantColor ? ` • ${it.variantColor}` : ''}`
+      : isVape
       ? `Equipo Vape${it.variantColor ? ` • Color: ${it.variantColor}` : ''}`
       : it.portion === 'tanque_lleno'
       ? 'Tanque Lleno'

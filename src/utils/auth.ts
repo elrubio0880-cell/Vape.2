@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'vape_current_user_v2',
-  USERS_CACHE: 'vape_users_cache_v2',
+  USERS_CACHE: 'vape_users_cache_v4_db',
 };
 
 const DEMO_USER_IDS = new Set(['user-admin-1', 'user-driver-1', 'user-buyer-1']);
@@ -519,10 +519,6 @@ export async function deleteDriver(driverId: string): Promise<void> {
  * Fetches all driver accounts merging Supabase profiles with local cache
  */
 export async function fetchDriversList(): Promise<UserAccount[]> {
-  const localDrivers = getStoredUsers().filter(
-    (u) => u.role === 'delivery' && u.isActive !== false && u.username?.toLowerCase() !== 'marcos_delivery'
-  );
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
@@ -532,43 +528,27 @@ export async function fetchDriversList(): Promise<UserAccount[]> {
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        const serverDrivers: UserAccount[] = data
+      if (!error && Array.isArray(data)) {
+        return data
           .filter((p) => p.username?.toLowerCase() !== 'marcos_delivery' && !DEMO_USER_IDS.has(p.id))
           .map((p) => ({
             id: p.id,
-            role: 'delivery',
+            role: 'delivery' as UserRole,
             name: p.name,
             phone: p.phone,
             username: p.username,
             createdAt: p.created_at,
             isActive: p.is_active,
           }));
-
-        const mergedMap = new Map<string, UserAccount>();
-        for (const sd of serverDrivers) {
-          const key = (sd.username || sd.id).toLowerCase();
-          mergedMap.set(key, sd);
-        }
-        for (const ld of localDrivers) {
-          const key = (ld.username || ld.id).toLowerCase();
-          const existing = mergedMap.get(key);
-          if (!existing) {
-            mergedMap.set(key, ld);
-          } else {
-            mergedMap.set(key, {
-              ...existing,
-              password: ld.password || existing.password,
-            });
-          }
-        }
-        return Array.from(mergedMap.values());
       }
     } catch (err) {
       console.warn('Error fetching drivers from Supabase:', err);
     }
   }
-  return localDrivers;
+
+  return getStoredUsers().filter(
+    (u) => u.role === 'delivery' && u.isActive !== false && u.username?.toLowerCase() !== 'marcos_delivery'
+  );
 }
 
 /**

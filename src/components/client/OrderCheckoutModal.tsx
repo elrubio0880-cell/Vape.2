@@ -472,12 +472,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-xl overflow-y-auto font-urban">
-      <div className="relative w-full max-w-3xl bg-[#0d0918]/95 border-2 border-purple-500/50 rounded-3xl p-5 sm:p-7 shadow-2xl shadow-purple-950 text-neutral-100 my-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-5 bg-black/90 backdrop-blur-xl overflow-y-auto font-urban">
+      <div className="relative w-full max-w-3xl bg-[#07120d]/95 border-2 border-emerald-500/50 rounded-3xl p-3.5 sm:p-7 shadow-2xl shadow-emerald-950/70 text-neutral-100 my-auto max-h-[92dvh] overflow-y-auto">
         {/* Header with BLACK VAPE Brand */}
-        <div className="flex items-center justify-between pb-4 border-b border-purple-900/40">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-purple-600 via-cyan-400 to-purple-500 shadow-lg shadow-purple-600/40 shrink-0">
+        <div className="flex items-center justify-between pb-3.5 sm:pb-4 border-b border-emerald-900/40 gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full p-0.5 bg-gradient-to-tr from-emerald-500 via-teal-400 to-emerald-400 shadow-lg shadow-emerald-500/30 shrink-0">
               <div className="w-full h-full rounded-full overflow-hidden bg-black flex items-center justify-center">
                 <img
                   src="/logo-black-vape.jpeg"
@@ -489,24 +489,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 />
               </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg sm:text-xl font-black text-white font-urban tracking-wider text-glow-purple">
-                  BLACK VAPE
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="text-base sm:text-xl font-black text-white font-urban tracking-wider">
+                  BLACK <span className="text-emerald-400">VAPE</span>
                 </span>
-                <span className="text-[10px] uppercase font-tag tracking-wider px-2.5 py-0.5 rounded-md bg-purple-900/50 border border-purple-500/50 text-purple-300">
-                  ENTREGA CALLEJERA
+                <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-500/50 text-emerald-300">
+                  DELIVERY EN MOTO
                 </span>
               </div>
-              <p className="text-xs text-neutral-300 font-medium">
-                Paso 2 • Confirma tu Ubicación Exacta & Detalles de Recarga
+              <p className="text-[11px] sm:text-xs text-neutral-300 font-medium truncate">
+                Paso 2 • Confirma tu Ubicación Exacta & Entrega
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 text-neutral-400 hover:text-white transition-all cursor-pointer border border-purple-800/40"
+            className="p-2 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 text-neutral-400 hover:text-white transition-all cursor-pointer border border-emerald-800/40 shrink-0"
             aria-label="Cerrar modal"
           >
             <X className="w-5 h-5" />
@@ -514,13 +514,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         </div>
 
         {errorMessage && (
-          <div className="mt-4 p-3.5 bg-red-950/70 border border-red-800/80 rounded-2xl text-red-200 text-xs flex items-center gap-2.5 animate-in fade-in">
+          <div className="mt-3 sm:mt-4 p-3 bg-red-950/70 border border-red-800/80 rounded-2xl text-red-200 text-xs flex items-center gap-2.5 animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span className="font-semibold">{errorMessage}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-6">
+        <form onSubmit={handleSubmit} className="mt-4 sm:mt-5 space-y-4 sm:space-y-6">
           {/* SECTION 1: UBICACIÓN ULTRA-PRECISA */}
           <div className="p-4 sm:p-5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
@@ -1082,6 +1082,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     <span className="text-neutral-500 font-semibold">
                       {it.productType === 'vape'
                         ? `(💨 Equipo Vape${it.variantColor ? ` • Color: ${it.variantColor}` : ''} • $${it.unitPrice})`
+                        : it.productType === 'accesorio'
+                        ? `(🔌 Accesorio • $${it.unitPrice})`
                         : `(${it.portion === 'tanque_lleno' ? `Tanque Lleno • $${it.unitPrice}` : `Mitad de Tanque • $${it.unitPrice}`})`}
                     </span>
                   </span>
@@ -1133,24 +1135,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
             {/* Aviso de Puntos Ganados / Fidelización */}
             {currentUser?.role === 'comprador' ? (
-              <div className="p-3 rounded-xl bg-gradient-to-r from-purple-950/70 to-indigo-950/70 border border-purple-500/50 flex items-center justify-between gap-3 text-xs shadow-md">
+              <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/70 to-teal-950/70 border border-emerald-500/50 flex items-center justify-between gap-3 text-xs shadow-md">
                 <div className="flex items-center gap-2.5">
                   <Sparkles className="w-5 h-5 text-amber-300 shrink-0 animate-pulse" />
                   <div>
                     <span className="font-black text-white font-urban block text-sm">
                       🎁 ¡Ganarás +{Math.floor(subtotalLiquid)} puntos con este pedido!
                     </span>
-                    <span className="text-[11px] text-purple-200">
+                    <span className="text-[11px] text-emerald-200">
                       Se acreditarán a tu cuenta ({currentUser.name}) automáticamente cuando el repartidor confirme la entrega.
                     </span>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-lg bg-purple-900 border border-purple-400/50 text-cyan-300 font-black text-xs shrink-0 font-urban">
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-black text-xs shrink-0 font-urban tabular-nums">
                   +{Math.floor(subtotalLiquid)} PTS
                 </span>
               </div>
             ) : (
-              <div className="p-3 rounded-xl bg-[#130d22] border border-purple-900/60 flex items-center justify-between gap-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-[#050b08] border border-emerald-900/60 flex items-center justify-between gap-2.5 text-xs">
                 <div className="flex items-center gap-2.5">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
                   <div>
@@ -1166,7 +1168,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   <button
                     type="button"
                     onClick={onOpenAuth}
-                    className="px-3 py-1.5 rounded-xl bg-purple-900/70 hover:bg-purple-800 text-cyan-300 font-black text-xs border border-purple-700/60 transition-colors cursor-pointer shrink-0 font-urban"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-emerald-300 font-black text-xs border border-emerald-500/50 transition-colors cursor-pointer shrink-0 font-urban"
                   >
                     Entrar / Registrarme
                   </button>

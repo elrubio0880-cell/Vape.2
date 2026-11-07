@@ -33,7 +33,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="pointer-events-auto bg-neutral-900/95 border border-neutral-700/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-start justify-between gap-3 animate-in slide-in-from-top-3 fade-in duration-200"
+          className="pointer-events-auto bg-[#07120d]/95 border border-emerald-500/40 rounded-2xl p-4 shadow-2xl shadow-black backdrop-blur-md flex items-start justify-between gap-3 animate-in slide-in-from-top-3 fade-in duration-200"
         >
           <div className="flex items-start gap-3">
             <div
@@ -42,7 +42,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
                   ? 'bg-emerald-500/20 text-emerald-400'
                   : t.type === 'alert'
                   ? 'bg-amber-500/20 text-amber-400'
-                  : 'bg-cyan-500/20 text-cyan-400'
+                  : 'bg-teal-500/20 text-teal-400'
               }`}
             >
               <Bell className="w-4 h-4" />

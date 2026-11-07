@@ -56,10 +56,10 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#0e091a] border border-purple-900/40 rounded-3xl p-5 shadow-2xl shadow-purple-950/30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-purple-900/30">
+      <div className="bg-[#07120d]/95 border border-emerald-500/30 rounded-3xl p-5 shadow-2xl shadow-black/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-emerald-900/40">
           <div>
-            <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
               <Clock className="w-4 h-4" />
               <span>{isStaff ? 'Registro General de Pedidos' : 'Tus Compras & Entregas'}</span>
             </div>
@@ -69,7 +69,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
             <p className="text-xs text-neutral-400 mt-1">
               {isStaff
                 ? 'Monitorea todos los pedidos recibidos en el sistema y su estado de entrega.'
-                : 'Consulta tus pedidos de líquidos, repite compras con un solo clic y rastrea en vivo en el mapa.'}
+                : 'Consulta tus pedidos de vapers, líquidos y accesorios, repite compras en 1 clic y rastrea en vivo.'}
             </p>
           </div>
 
@@ -77,9 +77,9 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
             <button
               type="button"
               onClick={onGoToShop}
-              className="py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-purple-900/40"
+              className="py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 rounded-full text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-500/25"
             >
-              <ShoppingBag className="w-4 h-4 text-cyan-300" />
+              <ShoppingBag className="w-4 h-4 stroke-[2.5]" />
               <span>Ir a la Tienda</span>
             </button>
           </div>
@@ -88,7 +88,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
         <div className="mt-5 space-y-4">
           {displayedOrders.length === 0 ? (
             <div className="text-center py-16 text-neutral-400 text-sm">
-              <div className="w-14 h-14 rounded-full bg-purple-900/20 border border-purple-700/30 flex items-center justify-center text-2xl mx-auto mb-3">
+              <div className="w-14 h-14 rounded-full bg-emerald-950/50 border border-emerald-500/30 flex items-center justify-center text-2xl mx-auto mb-3">
                 📦
               </div>
               <p className="font-bold text-white">No hay pedidos registrados para mostrar.</p>
@@ -101,7 +101,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setFilterMineOnly(false)}
-                  className="mt-2 text-xs text-cyan-400 hover:underline cursor-pointer"
+                  className="mt-2 text-xs text-emerald-400 hover:underline cursor-pointer"
                 >
                   Ver todos los pedidos del sistema ({orders.length})
                 </button>
@@ -110,9 +110,9 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                 <button
                   type="button"
                   onClick={onGoToShop}
-                  className="py-2.5 px-5 bg-gradient-to-r from-purple-600 to-cyan-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg shadow-purple-900/40"
+                  className="py-2.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 rounded-full text-xs font-black transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-lg shadow-emerald-500/30"
                 >
-                  <span>Pedir Recarga de Vape</span>
+                  <span>Explorar Productos</span>
                   <span>🛵</span>
                 </button>
               </div>
@@ -136,10 +136,10 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
               return (
                 <div
                   key={order.id}
-                  className={`p-5 rounded-2xl bg-[#090611] border transition-all space-y-3 ${
+                  className={`p-5 rounded-2xl bg-[#050b08] border transition-all space-y-3 ${
                     isActive
-                      ? 'border-cyan-500/50 shadow-lg shadow-cyan-950/30'
-                      : 'border-purple-900/30 hover:border-purple-800/60'
+                      ? 'border-emerald-400/60 shadow-lg shadow-emerald-950/40'
+                      : 'border-emerald-900/40 hover:border-emerald-500/40'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -154,7 +154,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                         })}
                       </span>
                       {order.customerName && (
-                        <span className="text-xs text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded-lg border border-purple-800/40">
+                        <span className="text-xs text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30">
                           {order.customerName}
                         </span>
                       )}
@@ -167,7 +167,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                             : order.status === 'cancelado'
                             ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                            : 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 animate-pulse'
+                            : 'bg-teal-500/20 text-teal-300 border border-teal-400/50 animate-pulse'
                         }`}
                       >
                         {order.status.replace(/_/g, ' ')}
@@ -186,28 +186,36 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                   )}
 
                   {/* Items */}
-                  <div className="space-y-1.5 divide-y divide-purple-950/50 text-xs">
+                  <div className="space-y-1.5 divide-y divide-emerald-950/60 text-xs">
                     {order.items.map((it, idx) => (
                       <div key={idx} className="flex justify-between items-center pt-1.5 first:pt-0">
                         <span className="text-neutral-300">
-                          <strong className="text-cyan-400 font-bold">{it.quantity}x</strong> {it.productName}{' '}
+                          <strong className="text-emerald-400 font-bold">{it.quantity}x</strong> {it.productName}{' '}
                           <span className="text-neutral-500 text-[11px]">
-                            ({it.portion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad'})
+                            ({it.productType === 'accesorio'
+                              ? 'Accesorio'
+                              : it.productType === 'vape'
+                              ? 'Equipo Vape'
+                              : it.portion === 'tanque_lleno'
+                              ? 'Tanque Lleno'
+                              : 'Mitad'})
                           </span>
                         </span>
-                        <span className="font-bold text-white font-urban">
-                          ${it.unitPrice * it.quantity} DOP
+                        <span className="font-bold text-white font-urban tabular-nums">
+                          RD${(it.unitPrice * it.quantity).toLocaleString()}
                         </span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="pt-3 border-t border-purple-950/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="pt-3 border-t border-emerald-950/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <span className="text-xs text-neutral-400">Total: </span>
-                      <strong className="text-sm text-cyan-400 font-urban">${order.totalAmount} DOP</strong>
-                      <span className="text-[11px] text-neutral-500 ml-1.5">
-                        (Envío: ${order.deliveryFee} DOP)
+                      <strong className="text-sm text-emerald-400 font-urban tabular-nums">
+                        RD${order.totalAmount.toLocaleString()}
+                      </strong>
+                      <span className="text-[11px] text-neutral-500 ml-1.5 tabular-nums">
+                        (Envío: RD${order.deliveryFee})
                       </span>
                     </div>
 
@@ -216,7 +224,7 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                         <button
                           type="button"
                           onClick={() => onTrackOrder(order.id)}
-                          className="py-2 px-3.5 bg-gradient-to-r from-cyan-500 to-teal-500 text-black rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-950 active:scale-95"
+                          className="py-2 px-3.5 bg-gradient-to-r from-emerald-500 to-teal-400 text-neutral-950 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-950 active:scale-95"
                         >
                           <MapPin className="w-3.5 h-3.5" />
                           <span>Rastrear en Vivo 🛵</span>
@@ -264,9 +272,9 @@ export const OrderHistorySection: React.FC<OrderHistorySectionProps> = ({
                       <button
                         type="button"
                         onClick={() => onRepeatOrder(order.items)}
-                        className="py-2 px-3.5 bg-purple-950/60 hover:bg-purple-900 border border-purple-700/50 text-purple-200 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm"
+                        className="py-2 px-3.5 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm"
                       >
-                        <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                        <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Repetir pedido</span>
                       </button>
                     </div>

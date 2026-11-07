@@ -40,13 +40,58 @@ export const INITIAL_ORDERS: Order[] = [];
 
 const STORAGE_KEYS = {
   AGE_VERIFIED: 'vape_age_verified_v1',
-  PRODUCTS: 'vape_products_v3_db',
-  ORDERS: 'vape_orders_v3_db',
-  STORE: 'vape_store_config_v1',
+  PRODUCTS: 'vape_products_v6_db',
+  ORDERS: 'vape_orders_v6_db',
+  STORE: 'vape_store_config_v6_db',
   ACTIVE_ROLE: 'vape_active_role_v1',
   CLIENT_CONTACT: 'vape_client_contact_v1',
   USER_LOCATION: 'vape_user_location_v1',
+  DB_STRICT_CLEANUP_DONE: 'vape_db_strict_cleanup_v6',
 };
+
+const LEGACY_KEYS_TO_PURGE = [
+  'vape_products_v1',
+  'vape_products_v2',
+  'vape_products_v3_db',
+  'vape_products_v4_db',
+  'vape_products_v5_db',
+  'vape_orders_v1',
+  'vape_orders_v2',
+  'vape_orders_v3_db',
+  'vape_orders_v4_db',
+  'vape_orders_v5_db',
+  'vape_store_config_v1',
+  'vape_store_config_v4_db',
+  'vape_store_config_v5_db',
+  'vape_store_customized_v1',
+  'vape_deleted_product_ids_v1',
+  'vape_products_customized_v1',
+  'vape_orders_purged_by_admin_v1',
+  'vape_users_cache_v1',
+  'vape_users_cache_v2',
+  'vape_point_transactions_v1',
+  'vape_redemptions_v1',
+  'vape_raffles_v1',
+  'vape_raffle_participants_v1',
+  'vape_active_client_order_id_v1',
+];
+
+export function purgeLegacyLocalStorageOnce(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(STORAGE_KEYS.DB_STRICT_CLEANUP_DONE) === 'true') {
+      return;
+    }
+    for (const key of LEGACY_KEYS_TO_PURGE) {
+      localStorage.removeItem(key);
+    }
+    localStorage.setItem(STORAGE_KEYS.DB_STRICT_CLEANUP_DONE, 'true');
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+purgeLegacyLocalStorageOnce();
 
 // Cross-tab broadcast channel + same-tab listeners
 let broadcastChannel: BroadcastChannel | null = null;
@@ -102,10 +147,10 @@ export function setStoredAgeVerified(val: boolean): void {
 }
 
 const EXTRA_STORAGE_KEYS = {
-  ORDERS_PURGED_BY_ADMIN: 'vape_orders_purged_by_admin_v1',
-  PRODUCTS_CUSTOMIZED: 'vape_products_customized_v1',
-  DELETED_PRODUCTS: 'vape_deleted_product_ids_v1',
-  STORE_CUSTOMIZED: 'vape_store_customized_v1',
+  ORDERS_PURGED_BY_ADMIN: 'vape_orders_purged_by_admin_v4',
+  PRODUCTS_CUSTOMIZED: 'vape_products_customized_v4',
+  DELETED_PRODUCTS: 'vape_deleted_product_ids_v4',
+  STORE_CUSTOMIZED: 'vape_store_customized_v4',
   CART_ITEMS: 'vape_cart_items_v1',
 };
 

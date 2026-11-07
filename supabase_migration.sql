@@ -78,11 +78,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 3.2 Catálogo de Productos (Líquidos y Equipos Vape con Variantes JSONB)
+-- 3.2 Catálogo de Productos (Líquidos, Equipos Vape y Accesorios con Variantes JSONB)
 CREATE TABLE IF NOT EXISTS public.products (
   id text PRIMARY KEY,
   name text NOT NULL,
-  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape')),
+  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
   flavor_category text NOT NULL,
   nicotine_mg integer NOT NULL DEFAULT 0,
   image_url text NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS public.products (
 
 -- Asegurar columnas nativas si la tabla products ya existía
 ALTER TABLE public.products
-  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape')),
+  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
   ADD COLUMN IF NOT EXISTS variants jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 -- 3.3 Configuración de la Tienda / Local Físico (Fila Única id=1)
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
   order_id text NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
   product_id text REFERENCES public.products(id) ON DELETE SET NULL,
   product_name text NOT NULL,
-  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape')),
+  product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
   variant_id text,
   variant_color text,
   variant_image text,
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
 
 -- Asegurar columnas y llave foránea ON DELETE SET NULL en order_items si ya existía
 ALTER TABLE public.order_items
-  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape')),
+  ADD COLUMN IF NOT EXISTS product_type text NOT NULL DEFAULT 'liquido' CHECK (product_type IN ('liquido', 'vape', 'accesorio')),
   ADD COLUMN IF NOT EXISTS variant_id text,
   ADD COLUMN IF NOT EXISTS variant_color text,
   ADD COLUMN IF NOT EXISTS variant_image text;
@@ -444,7 +444,7 @@ BEGIN
       RAISE EXCEPTION 'Stock insuficiente para %: solo quedan % unidades.', v_prod.name, v_prod.stock_units;
     END IF;
 
-    IF v_prod.product_type = 'vape' OR v_item_portion = 'tanque_lleno' THEN
+    IF v_prod.product_type IN ('vape', 'accesorio') OR v_item_portion = 'tanque_lleno' THEN
       v_item_unit_price := v_prod.price_full_tank;
     ELSE
       v_item_unit_price := v_prod.price_half_tank;
@@ -506,7 +506,7 @@ BEGIN
     trim(p_special_notes)
   );
 
-  -- 6. Insertar detalle de ítems (con soporte de Equipos Vape y colores)
+  -- 6. Insertar detalle de ítems (con soporte de Equipos Vape, Accesorios y colores)
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
     v_item_portion := COALESCE(v_item->>'portion', 'tanque_lleno');
@@ -518,11 +518,11 @@ BEGIN
     SELECT * INTO v_prod FROM public.products WHERE id = (v_item->>'product_id');
 
     v_item_type := COALESCE(NULLIF(v_item->>'product_type', ''), v_prod.product_type, 'liquido');
-    IF v_item_type NOT IN ('liquido', 'vape') THEN
+    IF v_item_type NOT IN ('liquido', 'vape', 'accesorio') THEN
       v_item_type := 'liquido';
     END IF;
 
-    IF v_item_type = 'vape' OR v_item_portion = 'tanque_lleno' THEN
+    IF v_item_type IN ('vape', 'accesorio') OR v_item_portion = 'tanque_lleno' THEN
       v_item_unit_price := v_prod.price_full_tank;
     ELSE
       v_item_unit_price := v_prod.price_half_tank;

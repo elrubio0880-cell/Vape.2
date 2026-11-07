@@ -23,14 +23,20 @@ const DEFAULT_SUPABASE_URL = 'https://pjipjzsdosyxasnhwmbk.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqaXBqenNkb3N5eGFzbmh3bWJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MTU2NTAsImV4cCI6MjEwOTQ5MTY1MH0.uk_TRfeb0qpvUOp63h-dYBKnMBCsis6tfsqC7YIAGQY';
 
-const supabaseUrl =
-  getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL') || DEFAULT_SUPABASE_URL;
-const supabaseAnonKey =
+const rawEnvUrl = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL');
+const rawEnvKey =
   getEnvVar('VITE_SUPABASE_ANON_KEY') ||
   getEnvVar('VITE_SUPABASE_PUBLISHABLE_KEY') ||
   getEnvVar('SUPABASE_PUBLISHABLE_KEY') ||
-  getEnvVar('SUPABASE_ANON_KEY') ||
-  DEFAULT_SUPABASE_ANON_KEY;
+  getEnvVar('SUPABASE_ANON_KEY');
+
+// Ignore deprecated legacy project 'alwxeeyozlxfuysxhzay' if still present in container env
+const isDeprecatedEnvProject = rawEnvUrl.includes('alwxeeyozlxfuysxhzay');
+
+const supabaseUrl =
+  !isDeprecatedEnvProject && rawEnvUrl ? rawEnvUrl : DEFAULT_SUPABASE_URL;
+const supabaseAnonKey =
+  !isDeprecatedEnvProject && rawEnvKey ? rawEnvKey : DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = (): boolean => {
   return Boolean(

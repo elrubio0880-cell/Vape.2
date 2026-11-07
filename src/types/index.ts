@@ -1,6 +1,8 @@
 export type PortionType = 'tanque_lleno' | 'mitad';
 
-export type ProductType = 'liquido' | 'vape';
+export type ProductType = 'liquido' | 'vape' | 'accesorio';
+
+export type StoreCatalogView = 'inicio' | 'vapes' | 'liquidos' | 'accesorios';
 
 export interface VapeVariant {
   id: string;

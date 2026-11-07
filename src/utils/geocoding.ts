@@ -323,7 +323,7 @@ export async function searchAddressOrPlace(
       const timeout = setTimeout(() => controller.abort(), 3000);
       const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
         `${q} Loma de Cabrera Republica Dominicana`
-      )}&lat=${biasCoords.lat}&lon=${biasCoords.lng}&limit=6&lang=es`;
+      )}&lat=${biasCoords.lat}&lon=${biasCoords.lng}&limit=6`;
 
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timeout);
@@ -426,7 +426,7 @@ export async function reverseGeocode(coords: Coordinates): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3200);
 
-    const photonUrl = `https://photon.komoot.io/reverse?lat=${coords.lat}&lon=${coords.lng}&lang=es`;
+    const photonUrl = `https://photon.komoot.io/reverse?lat=${coords.lat}&lon=${coords.lng}`;
     const res = await fetch(photonUrl, { signal: controller.signal });
     clearTimeout(timeout);
 

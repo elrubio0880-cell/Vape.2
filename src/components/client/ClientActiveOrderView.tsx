@@ -101,19 +101,19 @@ export const ClientActiveOrderView: React.FC<ClientActiveOrderViewProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300 font-urban">
       {/* Status banner */}
-      <div className="bg-[#0d0918]/95 border-2 border-purple-500/40 rounded-3xl p-5 shadow-2xl shadow-purple-950 relative overflow-hidden">
+      <div className="bg-[#07120d]/95 border-2 border-emerald-500/40 rounded-3xl p-5 shadow-2xl shadow-emerald-950/60 relative overflow-hidden">
         {/* Glow */}
         {isFareProposed && (
-          <div className="absolute inset-0 bg-cyan-500/10 pointer-events-none animate-pulse" />
+          <div className="absolute inset-0 bg-teal-500/10 pointer-events-none animate-pulse" />
         )}
         {order.status === 'llegada_a_destino' && (
-          <div className="absolute inset-0 bg-purple-500/20 pointer-events-none animate-pulse" />
+          <div className="absolute inset-0 bg-emerald-500/20 pointer-events-none animate-pulse" />
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-purple-900/40 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-emerald-900/40 pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-tag tracking-wider text-purple-400">PEDIDO #{order.id}</span>
+              <span className="text-xs font-bold tracking-wider text-emerald-400">PEDIDO #{order.id}</span>
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                   isPendingQuote
@@ -123,7 +123,7 @@ export const ClientActiveOrderView: React.FC<ClientActiveOrderViewProps> = ({
                     : order.status === 'en_camino'
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
                     : order.status === 'llegada_a_destino'
-                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 animate-bounce'
+                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30 animate-bounce'
                     : isCompleted
                     ? 'bg-neutral-800 text-neutral-300'
                     : 'bg-red-500/20 text-red-400'
@@ -135,7 +135,7 @@ export const ClientActiveOrderView: React.FC<ClientActiveOrderViewProps> = ({
             <h2 className="text-xl font-black text-white mt-1">
               {isPendingQuote && 'Esperando Cotización del Delivery...'}
               {isFareProposed && '¡Propuesta de Tarifa Recibida!'}
-              {order.status === 'aprobado_en_preparacion' && 'Aprobado • Preparando tus Líquidos'}
+              {order.status === 'aprobado_en_preparacion' && 'Aprobado • Preparando tu Pedido'}
               {order.status === 'en_camino' && 'Repartidor en Camino a tu Ubicación 🛵'}
               {order.status === 'llegada_a_destino' && '🛵 ¡El Delivery ha llegado!'}
               {isCompleted && 'Pedido Entregado con Éxito'}
@@ -521,7 +521,7 @@ export const ClientActiveOrderView: React.FC<ClientActiveOrderViewProps> = ({
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
               <Receipt className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Detalle del Recibo (Recargas de Tanque)</span>
+              <span>Detalle del Recibo del Pedido</span>
             </span>
             <span className="text-xs text-neutral-400">
               {new Date(order.createdAt).toLocaleTimeString([], {
@@ -538,7 +538,15 @@ export const ClientActiveOrderView: React.FC<ClientActiveOrderViewProps> = ({
                   <span className="text-emerald-400 font-bold">{it.quantity}x</span>{' '}
                   {it.productName}{' '}
                   <span className="text-amber-400/90 text-[11px] font-medium">
-                    ({it.portion === 'tanque_lleno' ? 'Recarga Tanque Lleno' : 'Recarga Mitad'})
+                    (
+                    {it.productType === 'vape'
+                      ? `💨 Equipo Vape${it.variantColor ? ` • ${it.variantColor}` : ''}`
+                      : it.productType === 'accesorio'
+                      ? '🔌 Accesorio'
+                      : it.portion === 'tanque_lleno'
+                      ? 'Recarga Tanque Lleno'
+                      : 'Recarga Mitad'}
+                    )
                   </span>
                 </span>
                 <span className="font-bold text-white">${it.unitPrice * it.quantity} DOP</span>

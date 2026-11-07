@@ -121,10 +121,10 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
   // If no active order, show physical store location map and user's relation to it
   return (
     <div className="space-y-6">
-      <div className="bg-[#0e091a] border border-purple-900/40 rounded-3xl p-5 shadow-2xl shadow-purple-950/30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-purple-900/30">
+      <div className="bg-[#07120d]/95 border border-emerald-500/30 rounded-3xl p-5 shadow-2xl shadow-black/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-emerald-900/40">
           <div>
-            <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
               <Store className="w-4 h-4" />
               <span>Sede Central & Cobertura de Entrega</span>
             </div>
@@ -132,7 +132,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
               Ubicación de BLACK VAPE & Tu Posición en Loma de Cabrera
             </h2>
             <p className="text-xs text-neutral-300 mt-1">
-              Sede física en <strong>{store.name}</strong> ({store.addressText}). Regla oficial de delivery: <strong>cada 1.5 km = $25 DOP</strong> ($25, $50, $75, etc.).
+              Sede física en <strong>{store.name}</strong> ({store.addressText}). Regla oficial de delivery: <strong>cada 1.5 km = RD$25</strong> (RD$25, RD$50, RD$75, etc.).
             </p>
           </div>
 
@@ -141,7 +141,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
               type="button"
               onClick={handleDetectGPS}
               disabled={isLocating}
-              className="py-2.5 px-4 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/60 text-blue-200 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
+              className="py-2.5 px-4 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white rounded-full text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
             >
               {isLocating ? (
                 <>
@@ -150,7 +150,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
                 </>
               ) : (
                 <>
-                  <Navigation className="w-3.5 h-3.5 text-blue-400" />
+                  <Navigation className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Detectar mi Ubicación GPS</span>
                 </>
               )}
@@ -159,38 +159,38 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
             <button
               type="button"
               onClick={onGoToShop}
-              className="py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-purple-900/40 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              className="py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 font-black text-xs rounded-full shadow-lg shadow-emerald-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
             >
-              <ShoppingBag className="w-4 h-4 text-cyan-300" />
-              <span>Pedir Líquidos</span>
+              <ShoppingBag className="w-4 h-4 stroke-[2.5]" />
+              <span>Ir a la Tienda</span>
             </button>
           </div>
         </div>
 
         {/* GPS Status pill notice if present */}
         {gpsStatusMsg && (
-          <div className="mt-3 p-3 rounded-2xl bg-blue-950/70 border border-blue-500/50 text-blue-200 text-xs flex items-center gap-2 animate-in fade-in">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+          <div className="mt-3 p-3 rounded-2xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-bold">{gpsStatusMsg}</span>
           </div>
         )}
 
         {/* User Distance & Fare preview card if user location detected */}
         {userLocation && userDistanceKm !== null && userDeliveryCalc && (
-          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-purple-950/60 border border-cyan-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
+          <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-[#050b08] via-[#081710] to-emerald-950/60 border border-emerald-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center justify-center text-xl shrink-0 font-black">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center justify-center text-xl shrink-0 font-black">
                 📍
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-cyan-400 block tracking-wider">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
                   DISTANCIA CALCULADA A TU CASA
                 </span>
                 <strong className="text-sm text-white font-urban block">
-                  Estás a <span className="text-cyan-300 font-black">{userDistanceKm.toFixed(2)} km</span> de BLACK VAPE (Colmado Noadia)
+                  Estás a <span className="text-emerald-300 font-black">{userDistanceKm.toFixed(2)} km</span> de BLACK VAPE (Colmado Noadia)
                 </strong>
                 <span className="text-xs text-neutral-400 block mt-0.5">
-                  Tarifa estimada de viaje: <span className="text-emerald-400 font-black">${userDeliveryCalc.fee} DOP</span> • Zona {userDeliveryCalc.tier} (Hasta {userDeliveryCalc.zone.maxKm} km)
+                  Tarifa estimada de viaje: <span className="text-emerald-400 font-black">RD${userDeliveryCalc.fee}</span> • Zona {userDeliveryCalc.tier} (Hasta {userDeliveryCalc.zone.maxKm} km)
                 </span>
               </div>
             </div>
@@ -198,7 +198,7 @@ export const MapaRastreoSection: React.FC<MapaRastreoSectionProps> = ({
             <button
               type="button"
               onClick={onGoToShop}
-              className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5 self-end sm:self-auto"
+              className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-neutral-950 text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5 self-end sm:self-auto"
             >
               <span>Hacer Pedido para Esta Ubicación</span>
               <span>🛵</span>

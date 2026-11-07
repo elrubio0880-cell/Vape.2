@@ -1,24 +1,11 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Wind, Eye, EyeOff, Flame } from 'lucide-react';
-import { playNotificationSound } from '../../utils/storage';
+import React, { useEffect, useRef, useCallback } from 'react';
 import graffitiWallImg from '../../assets/images/graffiti_brick_wall_1793233367494.jpg';
-
-type SmokeIntensity = 'suave' | 'intenso' | 'epico';
 
 interface PuffWave {
   startTime: number;
   originX: number; // 0.0 to 1.0
   strength: number;
 }
-
-const FLAVOR_PUFF_MESSAGES = [
-  '🍇 SLUSHY EXPRESS • POP ICED GRAPE • SABOR INTENSO',
-  '🍓 LA POPY 70MG • FRUTALES ICE • NUBE ULTRA DENSA',
-  '❄️ HORNY FLAVA ICE MINT • EXPLOSIÓN GLACIAL 100%',
-  '⚡ POD JUICE ENERGY FREEZE • GOLPE DE GARGANTA PURO',
-  '🍉 STRAWBERRY WATERMELON ICE • VAPOR CALLEJERO',
-  '💨 MUHA MEDS • HUMO DENSO & PURO EN SEGUNDOS',
-];
 
 const VERTEX_SHADER_SOURCE = `
   attribute vec2 a_position;
@@ -182,52 +169,33 @@ export function SmokeOverlay() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const puffsRef = useRef<PuffWave[]>([]);
   const startTimeRef = useRef<number>(performance.now());
-  const [smokeEnabled, setSmokeEnabled] = useState(true);
-  const [intensity, setIntensity] = useState<SmokeIntensity>('intenso');
-  const [activeFlavorBanner, setActiveFlavorBanner] = useState<string | null>(null);
-  const bannerTimeoutRef = useRef<number | null>(null);
 
-  const triggerPuffWave = useCallback(
-    (customFlavor?: string, originXNorm?: number) => {
-      const nowSec = (performance.now() - startTimeRef.current) / 1000;
-      const strength = intensity === 'epico' ? 1.15 : intensity === 'intenso' ? 0.9 : 0.65;
+  const triggerPuffWave = useCallback((_customFlavor?: string, originXNorm?: number) => {
+    const nowSec = (performance.now() - startTimeRef.current) / 1000;
+    const strength = 0.9;
 
-      // Push two staggered plumes (one from the button/action area and one central exhalation)
-      const nextPuffs: PuffWave[] = [
-        {
-          startTime: nowSec,
-          originX: originXNorm ?? 0.52 + (Math.random() - 0.5) * 0.22,
-          strength,
-        },
-        {
-          startTime: nowSec - 0.08,
-          originX: 0.82 + (Math.random() - 0.5) * 0.1,
-          strength: strength * 0.75,
-        },
-        ...puffsRef.current,
-      ].slice(0, 3);
+    // Push two staggered plumes (one from the button/action area and one central exhalation)
+    const nextPuffs: PuffWave[] = [
+      {
+        startTime: nowSec,
+        originX: originXNorm ?? 0.52 + (Math.random() - 0.5) * 0.22,
+        strength,
+      },
+      {
+        startTime: nowSec - 0.08,
+        originX: 0.82 + (Math.random() - 0.5) * 0.1,
+        strength: strength * 0.75,
+      },
+      ...puffsRef.current,
+    ].slice(0, 3);
 
-      puffsRef.current = nextPuffs;
-
-      const message =
-        customFlavor ||
-        FLAVOR_PUFF_MESSAGES[Math.floor(Math.random() * FLAVOR_PUFF_MESSAGES.length)];
-      setActiveFlavorBanner(message);
-      if (bannerTimeoutRef.current) {
-        window.clearTimeout(bannerTimeoutRef.current);
-      }
-      bannerTimeoutRef.current = window.setTimeout(() => {
-        setActiveFlavorBanner(null);
-      }, 3600);
-    },
-    [intensity]
-  );
+    puffsRef.current = nextPuffs;
+  }, []);
 
   // Listen to global 'vape-smoke-burst' event from StoreCatalog and other components
   useEffect(() => {
     const handleBurstEvent = (evt: Event) => {
       const customEvt = evt as CustomEvent<{ flavor?: string }>;
-      setSmokeEnabled(true);
       triggerPuffWave(customEvt.detail?.flavor, 0.5);
     };
 
@@ -306,16 +274,8 @@ export function SmokeOverlay() {
     let animId: number;
 
     const renderFrame = () => {
-      if (!smokeEnabled) {
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        animId = window.requestAnimationFrame(renderFrame);
-        return;
-      }
-
       const elapsedSec = (performance.now() - startTimeRef.current) / 1000;
-      const baseIntensity =
-        intensity === 'epico' ? 0.62 : intensity === 'intenso' ? 0.44 : 0.26;
+      const baseIntensity = 0.44;
 
       gl.uniform2f(uResLoc, canvas.width, canvas.height);
       gl.uniform1f(uTimeLoc, elapsedSec);
@@ -358,13 +318,7 @@ export function SmokeOverlay() {
       gl.deleteShader(vs);
       gl.deleteShader(fs);
     };
-  }, [smokeEnabled, intensity]);
-
-  const handleManualPuff = () => {
-    setSmokeEnabled(true);
-    playNotificationSound('vape-hit');
-    triggerPuffWave();
-  };
+  }, []);
 
   return (
     <>
@@ -376,84 +330,18 @@ export function SmokeOverlay() {
           style={{ backgroundImage: `url(${graffitiWallImg})` }}
         />
         {/* Deep street vignette to guarantee contrast and text readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#08050e]/85 via-[#08050e]/65 to-[#08050e]/92 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#060d0a]/88 via-[#07100c]/70 to-[#060d0a]/94 pointer-events-none" />
 
-        {/* 2. Ambient Neon Atmosphere (Purple & Cyan Glows) */}
-        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] rounded-full blur-[160px] bg-purple-700/18 pointer-events-none" />
-        <div className="absolute top-1/3 -right-32 w-[600px] h-[600px] rounded-full blur-[170px] bg-cyan-600/14 pointer-events-none" />
-        <div className="absolute -bottom-32 left-1/4 w-[750px] h-[550px] rounded-full blur-[180px] bg-fuchsia-800/15 pointer-events-none" />
+        {/* 2. Ambient Neon Atmosphere (Emerald & Cyan Glows) */}
+        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] rounded-full blur-[160px] bg-emerald-700/18 pointer-events-none" />
+        <div className="absolute top-1/3 -right-32 w-[600px] h-[600px] rounded-full blur-[170px] bg-teal-600/14 pointer-events-none" />
+        <div className="absolute -bottom-32 left-1/4 w-[750px] h-[550px] rounded-full blur-[180px] bg-emerald-800/15 pointer-events-none" />
 
         {/* 3. Real-Time GPU Volumetric Curl Smoke Shader Canvas */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none mix-blend-screen"
         />
-      </div>
-
-      {/* Floating Flavor Puff Banner when a Calada is triggered */}
-      {activeFlavorBanner && (
-        <div className="fixed bottom-24 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none px-4 w-full max-w-xl flex justify-center">
-          <div className="px-5 py-2.5 rounded-full bg-[#0d071b]/95 border-2 border-purple-500/80 shadow-2xl shadow-purple-600/40 flex items-center gap-2.5 text-xs sm:text-sm font-black text-white font-tag tracking-wider animate-bounce">
-            <Flame className="w-4 h-4 text-orange-400 shrink-0" />
-            <span className="truncate">{activeFlavorBanner}</span>
-            <Wind className="w-4 h-4 text-cyan-400 shrink-0" />
-          </div>
-        </div>
-      )}
-
-      {/* Interactive Real-Time Vape Smoke Generator Widget (Bottom-Right) */}
-      <div className="fixed bottom-16 sm:bottom-5 right-3 sm:right-5 z-40 flex flex-col items-end gap-2 select-none">
-        {/* Intensity & Visibility Bar */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-[#0c0817]/95 border border-purple-800/70 backdrop-blur-xl shadow-lg">
-          <button
-            type="button"
-            onClick={() => setSmokeEnabled((prev) => !prev)}
-            title={smokeEnabled ? 'Ocultar humo' : 'Mostrar humo'}
-            className={`p-1 rounded-full transition-colors cursor-pointer ${
-              smokeEnabled
-                ? 'text-cyan-400 hover:bg-cyan-950/50'
-                : 'text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            {smokeEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-          </button>
-          {(['suave', 'intenso', 'epico'] as SmokeIntensity[]).map((lvl) => (
-            <button
-              key={lvl}
-              type="button"
-              onClick={() => {
-                setIntensity(lvl);
-                setSmokeEnabled(true);
-              }}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer capitalize ${
-                intensity === lvl && smokeEnabled
-                  ? 'bg-purple-600 text-white shadow shadow-purple-600/50'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              {lvl === 'epico' ? 'Épico 💨' : lvl}
-            </button>
-          ))}
-        </div>
-
-        {/* Main "¡CALADA!" Trigger Button */}
-        <button
-          type="button"
-          onClick={handleManualPuff}
-          className="group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#110921]/95 hover:bg-[#190d30] border-2 border-purple-500/70 hover:border-cyan-400 shadow-2xl shadow-purple-900/50 transition-all active:scale-95 cursor-pointer backdrop-blur-xl"
-        >
-          <div className="w-9 h-9 rounded-full bg-purple-600/30 border border-purple-400/50 flex items-center justify-center text-purple-300 group-hover:text-cyan-300 group-hover:scale-110 transition-transform">
-            <Wind className="w-4 h-4" />
-          </div>
-          <div className="text-left">
-            <span className="block text-[9px] font-black uppercase tracking-widest text-purple-300 group-hover:text-cyan-300">
-              HUMO REAL EN VIVO
-            </span>
-            <span className="block text-xs sm:text-sm font-black text-white font-tag tracking-wide">
-              ¡CALADA! 💨
-            </span>
-          </div>
-        </button>
       </div>
     </>
   );

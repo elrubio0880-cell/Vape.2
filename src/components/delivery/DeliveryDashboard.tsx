@@ -841,7 +841,15 @@ export const DeliveryDashboard: React.FC<DeliveryDashboardProps> = ({
                           <strong className="text-emerald-400">{it.quantity}x</strong>{' '}
                           {it.productName}{' '}
                           <span className="text-neutral-500">
-                            ({it.portion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad'})
+                            (
+                            {it.productType === 'vape'
+                              ? `Equipo Vape${it.variantColor ? ` • ${it.variantColor}` : ''}`
+                              : it.productType === 'accesorio'
+                              ? 'Accesorio'
+                              : it.portion === 'tanque_lleno'
+                              ? 'Tanque Lleno'
+                              : 'Mitad'}
+                            )
                           </span>
                         </span>
                         <span className="font-bold text-white">${it.unitPrice * it.quantity}</span>
@@ -1082,10 +1090,10 @@ export const DeliveryDashboard: React.FC<DeliveryDashboardProps> = ({
                 )}
               </div>
 
-              {/* Liquids to Deliver */}
+              {/* Items to Deliver */}
               <div className="p-4 rounded-2xl bg-neutral-950/70 border border-neutral-800">
                 <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider block mb-2">
-                  Líquidos para este cliente:
+                  Productos para este cliente:
                 </span>
                 <div className="space-y-2 divide-y divide-neutral-900 text-xs">
                   {currentFocusedOrder.items.map((it, idx) => (
@@ -1093,7 +1101,15 @@ export const DeliveryDashboard: React.FC<DeliveryDashboardProps> = ({
                       <div>
                         <span className="text-white font-bold">{it.quantity}x {it.productName}</span>
                         <span className="text-cyan-400 ml-2">
-                          ({it.portion === 'tanque_lleno' ? 'Tanque Lleno' : 'Mitad'})
+                          (
+                          {it.productType === 'vape'
+                            ? `💨 Equipo Vape${it.variantColor ? ` • ${it.variantColor}` : ''}`
+                            : it.productType === 'accesorio'
+                            ? '🔌 Accesorio'
+                            : it.portion === 'tanque_lleno'
+                            ? 'Tanque Lleno'
+                            : 'Mitad'}
+                          )
                         </span>
                       </div>
                       <span className="font-bold text-white">${it.unitPrice * it.quantity} DOP</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   AppSection,
+  StoreCatalogView,
   UserAccount,
   Product,
   Order,
@@ -8,6 +9,7 @@ import {
   OrderItem,
   OrderStatus,
   Coordinates,
+  UserRole,
 } from './types';
 import {
   getStoredProducts,
@@ -42,7 +44,7 @@ import { Navigation } from './components/Navigation';
 import { StoreCatalog } from './components/client/StoreCatalog';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
 import { SmokeOverlay } from './components/effects/SmokeOverlay';
-import { Flame, Sparkles, MapPin, Bike, Wind } from 'lucide-react';
+import { Crown, MessageCircle } from 'lucide-react';
 
 // Code-splitting via React.lazy for non-landing views and heavy modules (Leaflet map, Admin, Modals)
 const AuthModal = React.lazy(() =>
@@ -94,7 +96,30 @@ export default function App() {
     } catch {}
   }, []);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authInitialRole, setAuthInitialRole] = useState<UserRole>('comprador');
+  const openAuthModal = useCallback(
+    (role?: UserRole) => {
+      setAuthInitialRole(role || currentUser?.role || 'comprador');
+      setIsAuthModalOpen(true);
+    },
+    [currentUser?.role]
+  );
   const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
+  const [activeStoreView, setActiveStoreView] = useState<StoreCatalogView>('inicio');
+  const [storeSearchQuery, setStoreSearchQuery] = useState<string>('');
+  const [cartCount, setCartCount] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('vape_cart_items_v1');
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.reduce((sum: number, it: any) => sum + Number(it.quantity || 0), 0)
+        : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [openCartSignal, setOpenCartSignal] = useState<number>(0);
 
   const [products, setProducts] = useState<Product[]>(getStoredProducts);
   const [orders, setOrders] = useState<Order[]>(getStoredOrders);
@@ -569,7 +594,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#08050e] text-neutral-100 flex flex-col font-urban relative selection:bg-purple-600 selection:text-white">
+    <div className="min-h-screen bg-[#050b08] text-neutral-100 flex flex-col font-urban relative selection:bg-emerald-500 selection:text-neutral-950">
       {/* Atmospheric Smoke & Live Vape Cloud Simulator */}
       <SmokeOverlay />
 
@@ -580,7 +605,7 @@ export default function App() {
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
             onAuthSuccess={handleAuthSuccess}
-            initialRole={currentUser?.role || 'comprador'}
+            initialRole={authInitialRole}
           />
         )}
       </React.Suspense>
@@ -591,12 +616,18 @@ export default function App() {
         onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
       />
 
-      {/* PedidosYa Navigation Header & Tab Bar */}
+      {/* Storefront Navigation Header & Tab Bar */}
       <Navigation
         currentSection={currentSection}
         onSectionChange={setCurrentSection}
+        activeStoreView={activeStoreView}
+        onStoreViewChange={setActiveStoreView}
+        searchQuery={storeSearchQuery}
+        onSearchChange={setStoreSearchQuery}
+        cartCount={cartCount}
+        onOpenCart={() => setOpenCartSignal((prev) => prev + 1)}
         currentUser={currentUser}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenAuth={openAuthModal}
         onLogout={handleLogout}
         store={store}
         activeOrdersCount={activeOrdersCount}
@@ -604,42 +635,49 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 pb-24 sm:p-6 sm:pb-8 lg:p-8 relative z-10">
-        {/* SECTION 1: TIENDA (Front-Facing Landing, Just Like PedidosYa - Instant Bundle) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 pb-24 sm:p-6 sm:pb-10 lg:p-8 relative">
+        {/* SECTION 1: TIENDA (Front-Facing Storefront) */}
         {currentSection === 'tienda' && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Fast active order notice banner if any */}
             {clientActiveOrder && (
               <div
                 onClick={() => setCurrentSection('mapa')}
-                className="bg-[#120924]/90 border-2 border-cyan-400/80 p-4 rounded-3xl cursor-pointer hover:border-cyan-300 transition-all shadow-xl shadow-cyan-950/40 flex items-center justify-between gap-4 group"
+                className="bg-[#071610]/95 border border-emerald-400/70 p-3.5 sm:p-4 rounded-2xl cursor-pointer hover:border-emerald-300 transition-all shadow-xl shadow-black/60 flex items-center justify-between gap-3 group"
               >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 flex items-center justify-center font-bold text-2xl group-hover:scale-105 transition-transform">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center font-bold text-xl group-hover:scale-105 transition-transform">
                     🛵
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase font-tag tracking-wider text-cyan-300 block">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 block">
                       TIENES UN PEDIDO ACTIVO EN CAMINO
                     </span>
-                    <strong className="text-sm text-white font-urban block">
-                      Pedido #{clientActiveOrder.id} • Estado: {clientActiveOrder.status.replace(/_/g, ' ').toUpperCase()}
+                    <strong className="text-xs sm:text-sm text-white font-urban block">
+                      Pedido #{clientActiveOrder.id} • Estado:{' '}
+                      {clientActiveOrder.status.replace(/_/g, ' ').toUpperCase()}
                     </strong>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs font-black text-cyan-400 group-hover:text-cyan-300">
-                  <span>Ver en el mapa</span>
-                  <span>➔</span>
+                <div className="flex items-center gap-1 text-xs font-black text-emerald-400 group-hover:text-emerald-300 shrink-0">
+                  <span>Ver mapa</span>
+                  <span>→</span>
                 </div>
               </div>
             )}
 
-            {/* Liquid Catalog */}
+            {/* Buyer Storefront Catalog */}
             <StoreCatalog
               products={products}
               store={store}
               onStartCheckout={handleStartCheckout}
               onCreateOrder={handleCreateOrder}
+              activeView={activeStoreView}
+              onViewChange={setActiveStoreView}
+              externalSearchQuery={storeSearchQuery}
+              onExternalSearchChange={setStoreSearchQuery}
+              onCartCountChange={setCartCount}
+              openCartSignal={openCartSignal}
             />
           </div>
         )}
@@ -727,17 +765,126 @@ export default function App() {
         )}
       </React.Suspense>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-900 bg-neutral-950 py-6 px-4 text-center text-xs text-neutral-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <img src="/logo-black-vape.jpeg" alt="BLACK VAPE" className="w-4 h-4 rounded-full object-cover" />
-            <span className="font-bold text-neutral-300 tracking-wider">BLACK VAPE</span>
-            <span>• Recarga de Tanque & Delivery en Tiempo Real</span>
+      {/* Storefront Footer (Matches Reference Image) */}
+      <footer className="relative z-10 border-t border-emerald-950/80 bg-[#040906]/95 py-8 px-4 sm:px-6 pb-24 sm:pb-8 text-xs text-neutral-400">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Col 1: Brand */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Crown className="w-4 h-4 text-emerald-400" />
+              <span className="font-black text-base text-white tracking-wider font-urban">
+                BLACK <span className="text-emerald-400">VAPE</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-400 leading-relaxed">
+              Tu vape shop de confianza. Vapers, líquidos de recarga y accesorios originales con delivery en tiempo real.
+            </p>
           </div>
-          <div className="flex items-center gap-4 text-neutral-400 text-[11px]">
-            <span>Local Físico: {store.addressText}</span>
-            <span>Tel / WhatsApp: {store.phone}</span>
+
+          {/* Col 2: Categorías */}
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-white text-xs uppercase tracking-wider">Categorías</h4>
+            <ul className="space-y-1 text-[11px]">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentSection('tienda');
+                    setActiveStoreView('inicio');
+                  }}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Inicio & Más Vendidos
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentSection('tienda');
+                    setActiveStoreView('vapes');
+                  }}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Vapers & Equipos
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentSection('tienda');
+                    setActiveStoreView('liquidos');
+                  }}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Líquidos de Recarga (RD$100 / RD$50)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentSection('tienda');
+                    setActiveStoreView('accesorios');
+                  }}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Accesorios
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          {/* Col 3: Navegación Rápida */}
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-white text-xs uppercase tracking-wider">Tu Pedido</h4>
+            <ul className="space-y-1 text-[11px]">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setCurrentSection('mapa')}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Mapa & Rastreo en Vivo
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setCurrentSection('pedidos')}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Historial de Pedidos
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="hover:text-emerald-400 transition-colors cursor-pointer"
+                >
+                  Mi Cuenta / Acceso
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          {/* Col 4: Ubicación & WhatsApp */}
+          <div className="space-y-2">
+            <h4 className="font-bold text-white text-xs uppercase tracking-wider">
+              Contacto & Local
+            </h4>
+            <p className="text-[11px] text-neutral-400">{store.addressText}</p>
+            <a
+              href={`https://wa.me/1${(store.whatsapp || store.phone || '8092104901').replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 py-2 px-3.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-neutral-950 border border-emerald-500/30 font-bold text-xs transition-all"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>WhatsApp: {store.phone}</span>
+            </a>
           </div>
         </div>
       </footer>
